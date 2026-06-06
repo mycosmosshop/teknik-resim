@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR API Ayarları</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .setup-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .service-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 5px solid #3498db;
+        }
+        
+        .service-card.recommended {
+            border-left-color: #27ae60;
+            background: #f0fff4;
+        }
+        
+        .service-card h2 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .badge.free {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .badge.recommended {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .service-info {
+            margin: 15px 0;
+            color: #555;
+            line-height: 1.8;
+        }
+        
+        .service-info ul {
+            margin-left: 20px;
+        }
+        
+        .service-info li {
+            margin: 5px 0;
+        }
+        
+        .setup-steps {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        
+        .setup-steps h3 {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .setup-steps ol {
+            margin-left: 20px;
+            color: #856404;
+        }
+        
+        .setup-steps li {
+            margin: 8px 0;
+        }
+        
+        .setup-steps a {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .setup-steps a:hover {
+            text-decoration: underline;
+        }
+        
+        .code-box {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .note {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .note strong {
+            color: #1976d2;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .comparison-table th,
+        .comparison-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .comparison-table th {
+            background: #2c3e50;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .comparison-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .checkmark {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .xmark {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <h1>🔧 OCR API Kurulum Rehberi</h1>
+        <p class="subtitle">Otomatik ölçü tanıma için aşağıdaki ücretsiz OCR servislerinden birini seçin</p>
+        
+        <!-- OCR.space (ÖNERİLEN) -->
+        <div class="service-card recommended">
+            <h2>
+                1. OCR.space API
+                <span class="badge free">ÜCRETSİZ</span>
+                <span class="badge recommended">ÖNERİLEN</span>
+            </h2>
+            
+            <div class="service-info">
+                <strong>Neden OCR.space?</strong>
+                <ul>
+                    <li>✅ Aylık 25,000 istek tamamen ücretsiz</li>
+                    <li>✅ Kayıt olur olmaz hemen API key alırsınız (30 saniye)</li>
+                    <li>✅ Kredi kartı bilgisi gerektirmez</li>
+                    <li>✅ Teknik resimler için optimize edilmiş</li>
+                    <li>✅ Türkçe karakter desteği</li>
+                </ul>
+            </div>
+            
+            <div class="setup-steps">
+                <h3>📋 Kurulum Adımları (3 Dakika)</h3>
+                <ol>
+                    <li><a href="https://ocr.space/ocrapi" target="_blank">ocr.space/ocrapi</a> adresine gidin</li>
+                    <li>"Register for Free API Key" butonuna tıklayın</li>
+                    <li>Email adresinizi girin ve "Register" yapın</li>
+                    <li>Email'inize gelen API Key'i kopyalayın</li>
+                    <li>Aşağıdaki dosyayı açın ve API Key'i yapıştırın:</li>
+                </ol>
+            </div>
+            
+            <div class="code-box">
+// app.js dosyasının 8. satırını düzenleyin:<br><br>
+apiKey: '<span style="color: #e74c3c;">K87899142388957</span>', <span style="color: #95a5a6;">// Bu DEMO KEY - SİLİN</span><br>
+apiKey: '<span style="color: #27ae60;">BURAYA_API_KEYINIZI_YAPIŞTIRIN</span>',
+            </div>
+            
+            <a href="https://ocr.space/ocrapi" target="_blank" class="btn btn-success">
+                🚀 ŞİMDİ API KEY AL (Ücretsiz)
+            </a>
+        </div>
+        
+        <!-- Google Cloud Vision -->
+        <div class="service-card">
+            <h2>
+                2. Google Cloud Vision API
+                <span class="badge free">SINIRLI ÜCRETSİZ</span>
+            </h2>
+            
+            <div class="service-info">
+                <strong>Özellikler:</strong>
+                <ul>
+                    <li>✅ Aylık 1,000 istek ücretsiz</li>
+                    <li>✅ En yüksek doğruluk oranı (%98+)</li>
+                    <li>❌ Kredi kartı bilgisi gerekli (ücretsiz kotada ücret kesilmez)</li>
+                    <li>❌ Google Cloud hesabı gerekli (karmaşık kurulum)</li>
+                </ul>
+            </div>
+            
+            <div class="setup-steps">
+                <h3>📋 Kurulum Adımları (15 Dakika)</h3>
+                <ol>
+                    <li><a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a>'a gidin</li>
+                    <li>Yeni proje oluşturun</li>
+                    <li>"Vision API"'yi etkinleştirin</li>
+                    <li>"Credentials" > "Create API Key" ile key alın</li>
+                    <li>app.js dosyasında Google ayarlarını yapın</li>
+                </ol>
+            </div>
+            
+            <div class="code-box">
+// app.js dosyasında (14-18. satırlar):<br><br>
+google: {<br>
+&nbsp;&nbsp;enabled: <span style="color: #27ae60;">true</span>, <span style="color: #95a5a6;">// false'u true yapın</span><br>
+&nbsp;&nbsp;apiKey: '<span style="color: #27ae60;">BURAYA_GOOGLE_API_KEY</span>',<br>
+},
+            </div>
+            
+            <a href="https://console.cloud.google.com" target="_blank" class="btn">
+                Google Cloud Console'a Git
+            </a>
+        </div>
+        
+        <!-- Mathpix -->
+        <div class="service-card">
+            <h2>
+                3. Mathpix API
+                <span class="badge free">SINIRLI ÜCRETSİZ</span>
+            </h2>
+            
+            <div class="service-info">
+                <strong>Teknik Resim Uzmanı:</strong>
+                <ul>
+                    <li>✅ Aylık 1,000 istek ücretsiz</li>
+                    <li>✅ Ø, ±, °, R gibi sembolleri mükemmel tanır</li>
+                    <li>✅ Matematik formülleri destekler</li>
+                    <li>❌ Kayıt formu doldurmanız gerekir</li>
+                </ul>
+            </div>
+            
+            <div class="setup-steps">
+                <h3>📋 Kurulum Adımları (10 Dakika)</h3>
+                <ol>
+                    <li><a href="https://mathpix.com/ocr" target="_blank">mathpix.com/ocr</a> adresine gidin</li>
+                    <li>"Try for Free" ile kayıt olun</li>
+                    <li>Dashboard'dan APP_ID ve APP_KEY alın</li>
+                    <li>app.js dosyasında Mathpix ayarlarını yapın</li>
+                </ol>
+            </div>
+            
+            <div class="code-box">
+// app.js dosyasında (21-26. satırlar):<br><br>
+mathpix: {<br>
+&nbsp;&nbsp;enabled: <span style="color: #27ae60;">true</span>,<br>
+&nbsp;&nbsp;appId: '<span style="color: #27ae60;">BURAYA_APP_ID</span>',<br>
+&nbsp;&nbsp;appKey: '<span style="color: #27ae60;">BURAYA_APP_KEY</span>',<br>
+},
+            </div>
+            
+            <a href="https://mathpix.com/ocr" target="_blank" class="btn">
+                Mathpix'e Git
+            </a>
+        </div>
+        
+        <!-- Karşılaştırma Tablosu -->
+        <h2 style="margin-top: 40px; color: #2c3e50;">📊 Karşılaştırma</h2>
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Özellik</th>
+                    <th>OCR.space</th>
+                    <th>Google Vision</th>
+                    <th>Mathpix</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Aylık Ücretsiz İstek</td>
+                    <td><strong>25,000</strong></td>
+                    <td>1,000</td>
+                    <td>1,000</td>
+                </tr>
+                <tr>
+                    <td>Kurulum Kolaylığı</td>
+                    <td><span class="checkmark">✓✓✓</span> Çok Kolay</td>
+                    <td><span class="xmark">✗</span> Karmaşık</td>
+                    <td><span class="checkmark">✓✓</span> Orta</td>
+                </tr>
+                <tr>
+                    <td>Kredi Kartı Gerekli</td>
+                    <td><span class="xmark">✗</span> Hayır</td>
+                    <td><span class="checkmark">✓</span> Evet</td>
+                    <td><span class="xmark">✗</span> Hayır</td>
+                </tr>
+                <tr>
+                    <td>Teknik Semboller (Ø, ±)</td>
+                    <td><span class="checkmark">✓</span> İyi</td>
+                    <td><span class="checkmark">✓✓</span> Çok İyi</td>
+                    <td><span class="checkmark">✓✓✓</span> Mükemmel</td>
+                </tr>
+                <tr>
+                    <td>Doğruluk Oranı</td>
+                    <td>%85-90</td>
+                    <td>%95-98</td>
+                    <td>%90-95</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="note">
+            <strong>💡 ÖNERİ:</strong> Başlangıç için <strong>OCR.space</strong> kullanın. 
+            Çok kolay kurulur ve 25,000 istek çoğu kullanıcı için yeterlidir. 
+            Daha fazla doğruluk istiyorsanız Google Vision'a geçebilirsiniz.
+        </div>
+        
+        <div class="note" style="background: #fff3cd; border-color: #ffc107;">
+            <strong>⚠️ ÖNEMLİ:</strong> API key aldıktan sonra <code>app.js</code> dosyasını 
+            düzenlemeyi unutmayın. DEMO KEY ile sınırlı sayıda istek atabilirsiniz.
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" class="btn btn-success" style="font-size: 18px; padding: 15px 40px;">
+                ✓ Kurulum Tamamlandı - Uygulamaya Dön
+            </a>
+        </div>
+    </div>
+</body>
+</html>

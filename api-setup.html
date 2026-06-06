@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Ayarları - Teknik Resim Balon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 32px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .api-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 5px solid #3498db;
+        }
+        
+        .api-card.active {
+            border-left-color: #27ae60;
+            background: #e8f8f0;
+        }
+        
+        .api-card h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: auto;
+        }
+        
+        .status-badge.active {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .status-badge.inactive {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .form-group input[type="text"],
+        .form-group input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .checkbox-group label {
+            cursor: pointer;
+            margin: 0;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn-success {
+            background: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+        }
+        
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            justify-content: space-between;
+        }
+        
+        .help-text {
+            color: #7f8c8d;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 5px;
+        }
+        
+        .info-box h4 {
+            color: #1976d2;
+            margin-bottom: 8px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            color: #1976d2;
+        }
+        
+        .info-box li {
+            margin: 5px 0;
+        }
+        
+        .info-box a {
+            color: #1976d2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            ⚙️ OCR API Ayarları
+        </h1>
+        <p class="subtitle">Otomatik ölçü okuma için OCR servislerini yapılandırın</p>
+        
+        <div id="successMessage" class="alert alert-success" style="display: none;">
+            ✅ Ayarlar başarıyla kaydedildi!
+        </div>
+        
+        <!-- OCR.space API -->
+        <div class="api-card" id="ocrspaceCard">
+            <h2>
+                🔵 OCR.space API
+                <span class="status-badge inactive" id="ocrspaceStatus">Devre Dışı</span>
+            </h2>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="ocrspaceEnabled">
+                <label for="ocrspaceEnabled">Bu servisi kullan (Önerilen - Ücretsiz)</label>
+            </div>
+            
+            <div class="form-group">
+                <label for="ocrspaceKey">API Anahtarı:</label>
+                <input type="password" id="ocrspaceKey" placeholder="OCR.space API anahtarınızı girin">
+                <p class="help-text">Ücretsiz: Ayda 25,000 istek</p>
+            </div>
+            
+            <div class="info-box">
+                <h4>📝 Nasıl API Anahtarı Alınır?</h4>
+                <ul>
+                    <li>1. <a href="https://ocr.space/ocrapi" target="_blank">OCR.space</a> sitesine gidin</li>
+                    <li>2. "Register for free API key" butonuna tıklayın</li>
+                    <li>3. Email adresinizi girin</li>
+                    <li>4. Gelen maildeki API anahtarını kopyalayıp buraya yapıştırın</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Google Cloud Vision -->
+        <div class="api-card" id="googleCard">
+            <h2>
+                🟡 Google Cloud Vision API
+                <span class="status-badge inactive" id="googleStatus">Devre Dışı</span>
+            </h2>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="googleEnabled">
+                <label for="googleEnabled">Bu servisi kullan</label>
+            </div>
+            
+            <div class="form-group">
+                <label for="googleKey">API Anahtarı:</label>
+                <input type="password" id="googleKey" placeholder="Google Cloud Vision API anahtarınızı girin">
+                <p class="help-text">Aylık ilk 1000 istek ücretsiz, sonrası $1.50/1000 istek</p>
+            </div>
+            
+            <div class="info-box">
+                <h4>📝 Nasıl API Anahtarı Alınır?</h4>
+                <ul>
+                    <li>1. <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a>'a gidin</li>
+                    <li>2. Yeni proje oluşturun</li>
+                    <li>3. "APIs & Services" > "Enable APIs" > "Cloud Vision API"</li>
+                    <li>4. "Credentials" > "Create Credentials" > "API key"</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Mathpix -->
+        <div class="api-card" id="mathpixCard">
+            <h2>
+                🟣 Mathpix API
+                <span class="status-badge inactive" id="mathpixStatus">Devre Dışı</span>
+            </h2>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="mathpixEnabled">
+                <label for="mathpixEnabled">Bu servisi kullan (Teknik formüller için)</label>
+            </div>
+            
+            <div class="form-group">
+                <label for="mathpixAppId">App ID:</label>
+                <input type="text" id="mathpixAppId" placeholder="Mathpix App ID">
+            </div>
+            
+            <div class="form-group">
+                <label for="mathpixAppKey">App Key:</label>
+                <input type="password" id="mathpixAppKey" placeholder="Mathpix App Key">
+                <p class="help-text">Ayda 1000 istek ücretsiz</p>
+            </div>
+            
+            <div class="info-box">
+                <h4>📝 Nasıl API Anahtarı Alınır?</h4>
+                <ul>
+                    <li>1. <a href="https://mathpix.com/ocr" target="_blank">Mathpix</a> sitesine gidin</li>
+                    <li>2. Hesap oluşturun</li>
+                    <li>3. Dashboard'dan "API Keys" bölümüne gidin</li>
+                    <li>4. App ID ve App Key'i kopyalayın</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <button class="btn btn-success" onclick="saveSettings()">💾 Kaydet</button>
+            <a href="index.html" class="btn btn-secondary">↩️ Ana Sayfaya Dön</a>
+            <button class="btn" onclick="testAPIs()">🧪 API'leri Test Et</button>
+        </div>
+    </div>
+    
+    <script>
+        // Sayfa yüklendiğinde ayarları yükle
+        window.addEventListener('DOMContentLoaded', loadSettings);
+        
+        function loadSettings() {
+            // OCR.space
+            const ocrspaceEnabled = localStorage.getItem('ocr_ocrspace_enabled') === 'true';
+            const ocrspaceKey = localStorage.getItem('ocr_ocrspace_key') || '';
+            
+            document.getElementById('ocrspaceEnabled').checked = ocrspaceEnabled;
+            document.getElementById('ocrspaceKey').value = ocrspaceKey;
+            updateStatus('ocrspace', ocrspaceEnabled);
+            
+            // Google
+            const googleEnabled = localStorage.getItem('ocr_google_enabled') === 'true';
+            const googleKey = localStorage.getItem('ocr_google_key') || '';
+            
+            document.getElementById('googleEnabled').checked = googleEnabled;
+            document.getElementById('googleKey').value = googleKey;
+            updateStatus('google', googleEnabled);
+            
+            // Mathpix
+            const mathpixEnabled = localStorage.getItem('ocr_mathpix_enabled') === 'true';
+            const mathpixAppId = localStorage.getItem('ocr_mathpix_appid') || '';
+            const mathpixAppKey = localStorage.getItem('ocr_mathpix_appkey') || '';
+            
+            document.getElementById('mathpixEnabled').checked = mathpixEnabled;
+            document.getElementById('mathpixAppId').value = mathpixAppId;
+            document.getElementById('mathpixAppKey').value = mathpixAppKey;
+            updateStatus('mathpix', mathpixEnabled);
+        }
+        
+        function saveSettings() {
+            // OCR.space
+            localStorage.setItem('ocr_ocrspace_enabled', document.getElementById('ocrspaceEnabled').checked);
+            localStorage.setItem('ocr_ocrspace_key', document.getElementById('ocrspaceKey').value);
+            
+            // Google
+            localStorage.setItem('ocr_google_enabled', document.getElementById('googleEnabled').checked);
+            localStorage.setItem('ocr_google_key', document.getElementById('googleKey').value);
+            
+            // Mathpix
+            localStorage.setItem('ocr_mathpix_enabled', document.getElementById('mathpixEnabled').checked);
+            localStorage.setItem('ocr_mathpix_appid', document.getElementById('mathpixAppId').value);
+            localStorage.setItem('ocr_mathpix_appkey', document.getElementById('mathpixAppKey').value);
+            
+            // Başarı mesajı
+            const msg = document.getElementById('successMessage');
+            msg.style.display = 'block';
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 3000);
+            
+            // Statusları güncelle
+            updateStatus('ocrspace', document.getElementById('ocrspaceEnabled').checked);
+            updateStatus('google', document.getElementById('googleEnabled').checked);
+            updateStatus('mathpix', document.getElementById('mathpixEnabled').checked);
+            
+            console.log('✅ API ayarları kaydedildi');
+        }
+        
+        function updateStatus(service, enabled) {
+            const statusBadge = document.getElementById(service + 'Status');
+            const card = document.getElementById(service + 'Card');
+            
+            if (enabled) {
+                statusBadge.textContent = 'Aktif';
+                statusBadge.classList.remove('inactive');
+                statusBadge.classList.add('active');
+                card.classList.add('active');
+            } else {
+                statusBadge.textContent = 'Devre Dışı';
+                statusBadge.classList.remove('active');
+                statusBadge.classList.add('inactive');
+                card.classList.remove('active');
+            }
+        }
+        
+        function testAPIs() {
+            alert('API test özelliği yakında eklenecek!\n\nŞimdilik ana sayfada gerçek bir ölçü seçerek test edebilirsiniz.');
+        }
+        
+        // Checkbox değiştiğinde status güncelle
+        document.getElementById('ocrspaceEnabled').addEventListener('change', (e) => {
+            updateStatus('ocrspace', e.target.checked);
+        });
+        
+        document.getElementById('googleEnabled').addEventListener('change', (e) => {
+            updateStatus('google', e.target.checked);
+        });
+        
+        document.getElementById('mathpixEnabled').addEventListener('change', (e) => {
+            updateStatus('mathpix', e.target.checked);
+        });
+    </script>
+</body>
+</html>

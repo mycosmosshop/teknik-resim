@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teknik Resim Balon Numaralandırma</title>
+    
+    <!-- Favicon - SVG Balon İkonu -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233498db'/%3E%3Cstop offset='100%25' style='stop-color:%232980b9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='5' y='65' width='90' height='25' rx='2' fill='%2395a5a6' stroke='%232c3e50' stroke-width='2'/%3E%3Ccircle cx='50' cy='35' r='25' fill='url(%23g)' stroke='%23ffffff' stroke-width='2.5'/%3E%3Ctext x='50' y='44' font-family='Arial,sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle'%3E1%3C/text%3E%3Cline x1='50' y1='60' x2='50' y2='78' stroke='%232c3e50' stroke-width='3'/%3E%3Cpolygon points='46,76 50,82 54,76' fill='%232c3e50'/%3E%3C/svg%3E">
+    
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tiff.js@1.0.0/tiff.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header style="padding-bottom: 10px;">
+            <svg width="60" height="60" viewBox="0 0 100 100" style="vertical-align: middle; margin-right: 15px;">
+                <defs>
+                    <linearGradient id="balloonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#3498db"/>
+                        <stop offset="100%" style="stop-color:#2980b9"/>
+                    </linearGradient>
+                </defs>
+                <!-- Teknik çizim (dikdörtgen) -->
+                <rect x="5" y="65" width="90" height="25" rx="2" fill="#95a5a6" stroke="#2c3e50" stroke-width="2"/>
+                <!-- Balon -->
+                <circle cx="50" cy="35" r="25" fill="url(#balloonGrad)" stroke="#ffffff" stroke-width="2.5"/>
+                <text x="50" y="44" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">1</text>
+                <!-- Ok çizgisi -->
+                <line x1="50" y1="60" x2="50" y2="78" stroke="#ffffff" stroke-width="3"/>
+                <!-- Ok ucu -->
+                <polygon points="46,76 50,82 54,76" fill="#ffffff"/>
+            </svg>
+            <h1 style="display: inline; vertical-align: middle;">Teknik Resim Balon Numaralandırma</h1>
+        </header>
+        
+        <!-- Sürüklenebilir Araç Çubukları -->
+        <div id="toolbarsContainer">
+            
+            <!-- Bar 1: Dosya & Araçlar - Üst Sol (DİKEY) -->
+            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="10" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 100;">
+                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">📁 DOSYA & ARAÇLAR</div>
+                <div class="toolbar-content" data-content style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <label for="fileInput" class="file-label" style="padding: 8px 16px; background: rgba(255,255,255,0.9); color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        Dosya Yükle
+                    </label>
+                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,image/tiff" style="display: none;" />
+                    <a href="api-setup.html" class="btn btn-warning" style="text-decoration: none; padding: 8px 16px; font-size: 13px;" target="_blank">⚙️ API</a>
+                    <button id="autoAlignBtn" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">🎯 Hizala</button>
+                    <button id="addTextBtn" class="btn btn-info" style="padding: 8px 16px; font-size: 13px;">📝 Metin</button>
+                    <button id="addLineBtn" class="btn btn-success" style="padding: 8px 16px; font-size: 13px;">📍 Çizgi</button>
+                </div>
+            </div>
+            
+            <!-- Bar 2: Balon Ayarları - Sol Alt (DİKEY) -->
+            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="200" style="background: rgba(52, 152, 219, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 101;">
+                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">🎯 BALON AYARLARI</div>
+                <div class="toolbar-content" data-content style="display: flex; gap: 8px; flex-wrap: wrap; max-width: 900px;">
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Şekil:</label>
+                        <select id="balloonShapeSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="circle">⚫ Daire</option>
+                            <option value="square">⬛ Kare</option>
+                            <option value="triangle">🔺 Üçgen</option>
+                            <option value="pentagon">⬠ Beşgen</option>
+                            <option value="hexagon">⬡ Altıgen</option>
+                            <option value="octagon">⯃ Sekizgen</option>
+                        </select>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Renk:</label>
+                        <select id="balloonColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="#3498db" selected>🔵 Mavi</option>
+                            <option value="#e74c3c">🔴 Kırmızı</option>
+                            <option value="#2ecc71">🟢 Yeşil</option>
+                            <option value="#f1c40f">🟡 Sarı</option>
+                            <option value="#9b59b6">🟣 Mor</option>
+                            <option value="#2c3e50">⚫ Lacivert</option>
+                            <option value="#1a1a1a">⚫ Siyah</option>
+                        </select>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Boyut:</label>
+                        <input type="number" id="balloonSizeInput" min="10" max="50" value="20" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Yazı:</label>
+                        <input type="number" id="balloonTextSizeInput" min="8" max="32" value="16" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Dolgu:</label>
+                        <select id="fillTypeSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="filled" selected>🔴 Dolu</option>
+                            <option value="empty">⚪ Boş</option>
+                        </select>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Başlangıç:</label>
+                        <input type="number" id="startNumberInput" min="1" value="1" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
+                        <button id="setStartNumberBtn" class="btn btn-info" style="padding: 5px 10px; font-size: 11px;">✓</button>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Oto Sıralama:</label>
+                        <select id="autoNumberDirectionSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="none" selected>Yok</option>
+                            <option value="left-right">← → Soldan Sağa</option>
+                            <option value="right-left">→ ← Sağdan Sola</option>
+                            <option value="top-bottom">↑ ↓ Yukarıdan Aşağı</option>
+                            <option value="bottom-top">↓ ↑ Aşağıdan Yukarı</option>
+                            <option value="clockwise">🔄 Saat Yönü</option>
+                            <option value="counter-clockwise">🔃 Saat Yönü Tersi</option>
+                        </select>
+                        <button id="applyAutoNumberBtn" class="btn btn-success" style="padding: 5px 10px; font-size: 11px;" title="Otomatik numaralandırmayı uygula">🔢 Uygula</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bar 3: Renk Ayarları - Sol Orta Alt (DİKEY) -->
+            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="390" style="background: rgba(46, 204, 113, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 102;">
+                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">🎨 RENK AYARLARI</div>
+                <div class="toolbar-content" data-content style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Çizgi:</label>
+                        <select id="lineColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="#2c3e50" selected>⚫ Siyah</option>
+                            <option value="#e74c3c">🔴 Kırmızı</option>
+                            <option value="#3498db">🔵 Mavi</option>
+                            <option value="#2ecc71">🟢 Yeşil</option>
+                            <option value="#f39c12">🟡 Sarı</option>
+                            <option value="#9b59b6">🟣 Mor</option>
+                            <option value="#ffffff">⚪ Beyaz</option>
+                        </select>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Yazı:</label>
+                        <select id="textColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="#000000" selected>⚫ Siyah</option>
+                            <option value="#ffffff">⚪ Beyaz</option>
+                            <option value="#e74c3c">🔴 Kırmızı</option>
+                            <option value="#3498db">🔵 Mavi</option>
+                            <option value="#2ecc71">🟢 Yeşil</option>
+                            <option value="#f1c40f">🟡 Sarı</option>
+                            <option value="#9b59b6">🟣 Mor</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bar 4: Metin Ayarları - Sağ -->
+            <div class="draggable-toolbar" data-initial-x="1350" data-initial-y="280" style="background: rgba(155, 89, 182, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 103;">
+                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">📝 METİN AYARLARI</div>
+                <div class="toolbar-content" data-content style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Boyut:</label>
+                        <input type="number" id="textSizeInput" min="8" max="72" value="16" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Kutu:</label>
+                        <select id="textBoxSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="none" selected>Yok</option>
+                            <option value="box">⬜ Kutulu</option>
+                        </select>
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <label style="font-weight: bold; color: white; font-size: 12px;">Stil:</label>
+                        <select id="fontFamilySelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
+                            <option value="Arial" selected>Arial</option>
+                            <option value="Arial Black">Arial Black</option>
+                            <option value="Verdana">Verdana</option>
+                            <option value="Tahoma">Tahoma</option>
+                            <option value="Trebuchet MS">Trebuchet MS</option>
+                            <option value="Impact">Impact</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Georgia">Georgia</option>
+                            <option value="Courier New">Courier New</option>
+                            <option value="Segoe UI">Segoe UI</option>
+                            <option value="Roboto">Roboto</option>
+                            <option value="Calibri">Calibri</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bar 5: İşlemler - Sağ Üst -->
+            <div class="draggable-toolbar" data-initial-x="1350" data-initial-y="10" style="background: rgba(231, 76, 60, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 104;">
+                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">⚡ İŞLEMLER</div>
+                <div class="toolbar-content" data-content style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; gap: 6px;">
+                        <label for="backupFileInput" class="btn btn-secondary" style="margin: 0; cursor: pointer; padding: 6px 12px; font-size: 12px;">📂 Yedek</label>
+                        <input type="file" id="backupFileInput" accept=".json" style="display: none;" />
+                        
+                        <button id="clearBtn" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;">🗑️ Temizle ▼</button>
+                        
+                        <button id="undoBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">↩️</button>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="exportBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">🖼️ PNG</button>
+                        <button id="exportPdfBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📄 PDF</button>
+                        <button id="exportExcelBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📊 Excel</button>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="resetDefaultsBtn" class="btn btn-warning" style="padding: 6px 12px; font-size: 12px; width: 100%;">🔄 Varsayılan</button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Dropdown menü - TOOLBAR DIŞINDA, sabit pozisyon -->
+        <div id="clearMenu" class="dropdown-menu" style="display: none; position: fixed; z-index: 99999;">
+            <button class="dropdown-item" id="clearAnnotationsBtn">Balonları Temizle</button>
+            <button class="dropdown-item" id="clearImageBtn">Resmi Temizle</button>
+            <button class="dropdown-item" id="clearTableBtn">Tabloyu Temizle</button>
+            <button class="dropdown-item" id="clearAllBtn">Tümünü Temizle</button>
+        </div>
+
+        <div class="main-content">
+            <div class="canvas-section" style="margin-top: 0;">
+                <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Ölçü okunuyor...</p>
+                </div>
+                
+                <!-- Zoom Kontrolleri -->
+                <div class="zoom-controls">
+                    <button id="zoomInBtn" class="zoom-btn" title="Yakınlaştır">🔍+</button>
+                    <span id="zoomLevel">100%</span>
+                    <button id="zoomOutBtn" class="zoom-btn" title="Uzaklaştır">🔍−</button>
+                    <button id="zoomResetBtn" class="zoom-btn" title="Ekrana Sığdır">📐 Fit</button>
+                </div>
+                
+                <div class="canvas-container" id="canvasContainer">
+                    <canvas id="drawingCanvas"></canvas>
+                </div>
+            </div>
+
+            <div class="table-section">
+                <h2>Ölçü Tablosu</h2>
+                
+                <!-- Tolerans Ayarları -->
+                <div class="tolerance-settings">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <label style="margin: 0;">Varsayılan Toleranslar:</label>
+                        <button id="openToleranceTableBtn" class="btn btn-warning" style="padding: 8px 15px;">
+                            📊 Tolerans Tablosunu Aç
+                        </button>
+                    </div>
+                    <div style="background: #e8f4f8; padding: 8px 12px; border-radius: 5px; margin-bottom: 10px; border-left: 4px solid #3498db; margin-top: -5px;">
+                        <small style="color: #2c3e50;">
+                            <strong>📋 Aktif Sistem:</strong> <span id="activeSystemText">DIN ISO 2768-m (medium/orta)</span>
+                        </small>
+                    </div>
+                    <div class="tolerance-inputs">
+                        <input type="text" id="defaultLowerTolerance" placeholder="-0.05" style="width: 80px;" />
+                        <span>/</span>
+                        <input type="text" id="defaultUpperTolerance" placeholder="+0.05" style="width: 80px;" />
+                        <button id="applyToleranceBtn" class="btn btn-success" style="padding: 8px 15px;">Tümüne Uygula</button>
+                        <button id="clearToleranceBtn" class="btn btn-secondary" style="padding: 8px 15px;">Temizle</button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="dimensionTable">
+                        <thead>
+                            <tr>
+                                <th style="cursor: pointer; user-select: none;" onclick="sortTable('no')" title="Sıralamak için tıklayın">
+                                    No <span id="sort-no">⇅</span>
+                                </th>
+                                <th style="cursor: pointer; user-select: none;" onclick="sortTable('dimension')" title="Sıralamak için tıklayın">
+                                    Ölçü (mm) <span id="sort-dimension">⇅</span>
+                                </th>
+                                <th>-/+ Tolerans</th>
+                                <th>Alt Tolerans</th>
+                                <th>Üst Tolerans</th>
+                                <th>Alt Limit</th>
+                                <th>Üst Limit</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- Satırlar dinamik olarak eklenecek -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ölçü Giriş Modal -->
+    <div id="dimensionModal" class="modal">
+        <div class="modal-content">
+            <h3>Ölçü Bilgilerini Girin</h3>
+            <div class="modal-body">
+                <!-- Görüntü Önizleme -->
+                <div class="preview-container">
+                    <img id="previewImage" alt="Ölçü Önizleme" />
+                </div>
+                
+                <!-- AI Önerisi -->
+                <div id="suggestion" class="suggestion hidden"></div>
+                
+                <div class="form-group">
+                    <label for="modalDimension">Ölçü (mm):</label>
+                    <input type="text" id="modalDimension" placeholder="Örn: 45, 21,9, 76" autofocus />
+                </div>
+                
+                <div class="modal-buttons">
+                    <button id="modalCancel" class="btn btn-danger">İptal</button>
+                    <button id="modalOK" class="btn btn-success">Tamam</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tolerans Tablosu Modal -->
+    <div id="toleranceTableModal" class="modal">
+        <div class="modal-content" style="max-width: 1000px;">
+            <h3>📊 Tolerans Tablosu (DIN ISO 2768)</h3>
+            <div class="modal-body">
+                <p style="color: #7f8c8d; margin-bottom: 15px;">
+                    Ölçü aralıklarına göre otomatik tolerans ataması yapılır. Sınıf seçin ve değerleri düzenleyebilirsiniz.
+                </p>
+                
+                <!-- Tolerans Sınıfı Seçimi -->
+                <div style="margin-bottom: 20px; padding: 15px; background: #ecf0f1; border-radius: 8px;">
+                    <label style="font-weight: bold; margin-right: 10px;">Tolerans Sınıfı:</label>
+                    <select id="toleranceClassSelect" style="padding: 8px 12px; border: 2px solid #3498db; border-radius: 4px; font-size: 14px;">
+                        <option value="fine">f (fine) - İnce</option>
+                        <option value="medium" selected>m (medium) - Orta</option>
+                        <option value="coarse">c (coarse) - Kaba</option>
+                        <option value="veryCoarse">v (very coarse) - Çok Kaba</option>
+                        <option value="manual">MANUEL (- ve + ayrı)</option>
+                    </select>
+                </div>
+                
+                <div class="tolerance-table-container">
+                    <table id="toleranceRangeTable" class="tolerance-range-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">No</th>
+                                <th>Başlangıç (mm)</th>
+                                <th>Bitiş (mm)</th>
+                                <th>f (İnce)</th>
+                                <th>m (Orta)</th>
+                                <th>c (Kaba)</th>
+                                <th>v (Ç.Kaba)</th>
+                                <th>MANUEL (-)</th>
+                                <th>MANUEL (+)</th>
+                                <th style="width: 80px;">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="toleranceRangeBody">
+                            <!-- Dinamik olarak doldurulacak -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button id="addToleranceRangeBtn" class="btn btn-success">+ Yeni Aralık Ekle</button>
+                    <button id="resetToleranceRangesBtn" class="btn btn-secondary">Varsayılana Dön (DIN ISO 2768)</button>
+                </div>
+                
+                <div class="modal-buttons" style="margin-top: 20px;">
+                    <button id="toleranceTableCancel" class="btn btn-danger">İptal</button>
+                    <button id="toleranceTableSave" class="btn btn-success">Kaydet ve Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PDF.js worker'ı ayarla
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>
