@@ -371,17 +371,19 @@ function setupEventListeners() {
         fitToScreen();
     });
     
-    // Mouse wheel ile zoom (canvas merkez noktasından)
+    // Mouse wheel ile zoom — YALNIZCA Ctrl/Cmd basılıyken. Düz tekerlek normal kaydırma yapar
+    // (eskiden her tekerlek hareketi kazara zoom-in/out yapıyordu).
     canvas.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return; // düz tekerlek: zoom yok, sayfa/pano normal kayar
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
         const newZoom = Math.max(0.3, Math.min(5.0, zoomLevel * delta));
-        
+
         if (newZoom !== zoomLevel) {
             zoomLevel = newZoom;
             updateCanvasTransform();
         }
-    });
+    }, { passive: false });
 
     canvas.addEventListener('mousedown', startDrawing);
     canvas.addEventListener('mousemove', draw);
