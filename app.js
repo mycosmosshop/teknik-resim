@@ -3863,11 +3863,16 @@ function exportImage() {
     // JSON yedek dosyasını da otomatik kaydet
     if (annotations.length > 0 || textAnnotations.length > 0) {
         const backup = {
+            version: '2.0',
             annotations: annotations,
             textAnnotations: textAnnotations,
             balloonCounter: balloonCounter,
             timestamp: timestamp,
-            imageData: currentImage ? canvas.toDataURL() : null
+            // TEMİZ çizim (balonsuz) — yüklenince balonlar canlı/silinebilir olsun.
+            // (Eskiden canvas.toDataURL() balonları çizime GÖMÜYORDU -> silinemiyordu.)
+            image: currentImage ? currentImage.src : null,
+            canvasWidth: canvas ? canvas.width : 0,
+            canvasHeight: canvas ? canvas.height : 0
         };
         
         const jsonBlob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -4923,11 +4928,15 @@ function handleMultipleDimensions(baseAnnotation, dimensions, wordBoxes) {
 function autoSaveToFile() {
     try {
         const saveData = {
-            version: '1.0',
+            version: '2.0',
             timestamp: new Date().toISOString(),
             totalAnnotations: annotations.length,
             balloonCounter: balloonCounter,
             annotations: annotations,
+            textAnnotations: (typeof textAnnotations !== 'undefined' ? textAnnotations : []),
+            image: currentImage ? currentImage.src : null, // temiz çizim (balonsuz)
+            canvasWidth: canvas ? canvas.width : 0,
+            canvasHeight: canvas ? canvas.height : 0,
             stats: ocrStats
         };
         
