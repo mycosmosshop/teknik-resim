@@ -465,6 +465,47 @@ function setupEventListeners() {
     canvasContainer.addEventListener('mousemove', doPan);
     canvasContainer.addEventListener('mouseup', endPan);
     canvasContainer.addEventListener('mouseleave', endPan);
+
+    // ── Dosya Drag-Drop ──────────────────────────────────────────────
+    const dropOverlay = document.createElement('div');
+    dropOverlay.id = 'dropOverlay';
+    dropOverlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(102,126,234,0.25);border:4px dashed #667eea;z-index:99998;pointer-events:none;align-items:center;justify-content:center;font-size:2em;font-weight:bold;color:#667eea;';
+    dropOverlay.textContent = '📄 Dosyayı buraya bırakın (PDF / JPEG / TIFF)';
+    document.body.appendChild(dropOverlay);
+
+    let dragCounter = 0;
+    document.addEventListener('dragenter', (e) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+            dragCounter++;
+            dropOverlay.style.display = 'flex';
+        }
+    });
+    document.addEventListener('dragleave', () => {
+        dragCounter--;
+        if (dragCounter <= 0) { dragCounter = 0; dropOverlay.style.display = 'none'; }
+    });
+    document.addEventListener('dragover', (e) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+    });
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.style.display = 'none';
+        const file = e.dataTransfer && e.dataTransfer.files[0];
+        if (!file) return;
+        const fileType = file.type;
+        const fileName = file.name.toLowerCase();
+        if (fileType === 'application/pdf') {
+            loadPDF(file);
+        } else if (fileType.startsWith('image/') || fileName.endsWith('.tif') || fileName.endsWith('.tiff')) {
+            loadImage(file);
+        } else {
+            alert('Sadece PDF, PNG, JPEG veya TIF dosyaları desteklenir!\nDosya tipi: ' + fileType);
+        }
+    });
 }
 
 // Canvas transform güncelle
