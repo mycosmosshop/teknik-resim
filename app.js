@@ -214,6 +214,8 @@ function setupEventListeners() {
             loadBackupFile(e.target.files[0]);
         }
     });
+    const saveBackupBtn = document.getElementById('saveBackupBtn');
+    if (saveBackupBtn) saveBackupBtn.addEventListener('click', saveBackupToFile);
     
     // Dropdown menü toggle - SADECE tıklama ise, drag değilse
     console.log('ClearBtn element:', clearBtn);
@@ -4948,6 +4950,34 @@ function autoSaveToFile() {
     }
 }
 
+// Manuel JSON yedek — ÇİZİM GÖRÜNTÜSÜ + balonlar + tablo. Yüklendiğinde düzenlenebilir.
+function saveBackupToFile() {
+    try {
+        const backup = {
+            version: '2.0',
+            timestamp: new Date().toISOString(),
+            balloonCounter: balloonCounter,
+            annotations: annotations,
+            textAnnotations: (typeof textAnnotations !== 'undefined' ? textAnnotations : []),
+            image: (currentImage && currentImage.src) ? currentImage.src : null, // temiz çizim (balonsuz)
+            canvasWidth: canvas ? canvas.width : 0,
+            canvasHeight: canvas ? canvas.height : 0,
+            stats: (typeof ocrStats !== 'undefined' ? ocrStats : null)
+        };
+        const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `teknik-resim-yedek-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showNotification(`💾 JSON yedek indirildi (çizim + ${annotations.length} ölçü)!`, 'success');
+    } catch (e) {
+        console.error('❌ Yedek hatası:', e);
+        showNotification('❌ Yedek alınamadı: ' + e.message, 'error');
+    }
+}
+
 // Yedek dosyasını geri yükle
 function loadBackupFile(file) {
     const reader = new FileReader();
@@ -4992,14 +5022,33 @@ function loadBackupFile(file) {
                 if (!textAnn.fontFamily) textAnn.fontFamily = 'Arial';
             });
             
-            // Tabloyu doldur
-            annotations.forEach(ann => addTableRow(ann));
-            
-            // Canvas'ı çiz
-            redrawCanvas();
-            
-            console.log('✅ Yedek dosyası yüklendi:', annotations.length, 'ölçü');
-            showNotification(`✓ ${annotations.length} ölçü geri yüklendi!`, 'success');
+            // Tabloyu doldur ve canvas'ı çiz (görüntü yüklendikten SONRA çiz ki balonlar oturur)
+            const finishRestore = () => {
+                annotations.forEach(ann => addTableRow(ann));
+                redrawCanvas();
+            };
+
+            // Çizim GÖRÜNTÜSÜNÜ de geri yükle (varsa) — böylece yüklenen yedek üzerinde
+            // balon ekleme/kaldırma/düzenleme yapılabilir. (image=temiz çizim; imageData=eski/balonlu yedek)
+            const imgSrc = data.image || data.imageData || null;
+            if (imgSrc) {
+                const bgImg = new Image();
+                bgImg.onload = function() {
+                    canvas.width = data.canvasWidth || bgImg.width;
+                    canvas.height = data.canvasHeight || bgImg.height;
+                    currentImage = bgImg;
+                    imageLoaded = true;
+                    finishRestore();
+                    setTimeout(() => { try { fitToScreen(); } catch (e) {} }, 100);
+                };
+                bgImg.onerror = function() { finishRestore(); };
+                bgImg.src = imgSrc;
+            } else {
+                finishRestore();
+            }
+
+            console.log('✅ Yedek dosyası yüklendi:', annotations.length, 'ölçü', imgSrc ? '(görüntü dahil)' : '(görüntü yok)');
+            showNotification(`✓ ${annotations.length} ölçü geri yüklendi!` + (imgSrc ? ' Çizim üzerinde düzenleyebilirsiniz.' : ''), 'success');
             
         } catch (err) {
             console.error('❌ Yedek yükleme hatası:', err);
