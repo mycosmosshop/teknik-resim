@@ -152,83 +152,117 @@ async function aiKareleriOku(kaynak, W, H, ayar, ilerleme) {
     return { olculer: aiTekille(ham), hatalar, kare: kareler.length };
 }
 
-// Model konumunun (mx,my) yakınındaki MÜREKKEP kutusu — saf geometri, kesin konum. Yoksa null (hayalet).
-// gri: Uint8Array (W*H) parlaklık; koyu = < 128
+// Model konumunun (mx,my) yakınındaki YAZI kutusu — bağlı bileşen (connected component) yöntemi.
+//   Projeksiyon yöntemi (v1) yüksek çözünürlükte kırılıyordu (6FA.881.989, 6000 px: pencereye giren çizgi/yay/komşu yazı
+//   satır bloklarını birleştiriyor, "21" 128×170, "35" yarım kutu). v2: (0) uzun ince çizgiler maskelenir, yüksek
+//   çözünürlükte 1 px açma ile kısa ince çizgi parçaları da silinir; (1) mürekkep bileşenleri bulunur; (2) ince çizgi /
+//   büyük yay / içi boş şekil elenir; (3) model konumuna en yakın rakam bileşeninden başlayıp yakın ve benzer boyutlu
+//   komşular (yatay ya da dikey) kümelenir; kutu = kümenin sınır kutusu; (4) beklenenden çok geniş kutu kırpılır.
+//   gri: Uint8Array (W*H) parlaklık. Dönüş {x,y,width,height} ya da null (konumda yazı yok → hayalet okuma).
 function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
     mx = Math.round(mx); my = Math.round(my);
     const px0 = Math.max(0, mx - R), px1 = Math.min(W, mx + R), py0 = Math.max(0, my - R), py1 = Math.min(H, my + R);
-    if (px1 - px0 < 4 || py1 - py0 < 4) return null;
     const pw = px1 - px0, ph = py1 - py0;
-    // 0) ÖLÇÜ ÇİZGİLERİNİ MASKELE: pencere kopyasında, pencereyi boydan boya geçen ince yatay/dikey çizgiler beyazlanır.
-    //    Ölçüldü (MAN 6984): dikey ölçü çizgisi her satırı "koyu" yapıp dikey yazılmış 62/210/250'yi tek dev blokta
-    //    eritiyor (→ hayalet sanılıp atıldı); yatay çizgi de "40" kutusunu 173 px'e uzatıyordu.
-    // mürekkep eşiği pencereye uyarlı: soluk tarama / büyütülmüş ince yazı gri kalır (ölçüldü: 2× büyütülmüş "270"
-    //   hiç <128 piksel vermedi); pencerenin en koyu pikseline göre 128–160 arası eşik
+    if (pw < 4 || ph < 4) return null;
+    // ikili pencere — mürekkep eşiği pencereye uyarlı (soluk tarama / büyütülmüş ince yazı gri kalır)
     let mn = 255; for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) { const v = gri[(py0 + y) * W + px0 + x]; if (v < mn) mn = v; }
     const esik = Math.max(128, Math.min(160, Math.round((mn + 255) / 2)));
-    const p = new Uint8Array(pw * ph);
+    let p = new Uint8Array(pw * ph);
     for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) p[y * pw + x] = gri[(py0 + y) * W + px0 + x] < esik ? 1 : 0;
-    const satT = new Int32Array(ph), sutT = new Int32Array(pw);
-    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (p[y * pw + x]) { satT[y]++; sutT[x]++; }
-    const cizgiSat = new Uint8Array(ph), cizgiSut = new Uint8Array(pw);
-    //    %35: yazının yanından başlayıp pencerenin yarısını geçmeyen çizgi de maskelenir; rakam satırı/sütunu bu kadar
-    //    uzun koyu şerit üretmez (3 rakam ≈ 45 px < 63), dikey yazı sütunları ise ince (≤5 px) olmadığı için korunur
-    for (let y = 0; y < ph; y++) if (satT[y] >= pw * 0.35) cizgiSat[y] = 1;
-    for (let x = 0; x < pw; x++) if (sutT[x] >= ph * 0.35) cizgiSut[x] = 1;
-    // yalnız İNCE (≤5 px) şeritler çizgidir; kalın koyu bant (dolu şekil) yazı olmasa da maskelenmez
+    // 0a) pencerenin ≥%20'sini geçen ≤5 px ince yatay/dikey çizgiler maskelenir (ölçü/uzatma çizgileri). Ölçüldü (6FA):
+    //   %35'te "21"in altındaki ~%25'lik ölçü çizgisi maskelenmeyip "2"ye yapışıyor, bileşen çizgiyle uzayıp eleniyordu
+    //   (kutu tek "1" kaldı). Rakam satırı %20'yi (3 rakam ≈ %14) geçmez; dikey yazı sütunu ince (≤5 px) değildir.
+    //   Ölçüt: satırdaki/sütundaki EN UZUN KESİNTİSİZ koyu koşu (rakam satırında koşu bir rakam genişliğini geçmez;
+    //   koyu piksel SAYISI ile ölçmek rakam satırlarını da çizgi sanıyordu: 2 rakam × 18 px = tam %20)
+    const satK = new Int32Array(ph), sutK = new Int32Array(pw);
+    for (let y = 0; y < ph; y++) { let n = 0, en = 0; for (let x = 0; x < pw; x++) { n = p[y * pw + x] ? n + 1 : 0; if (n > en) en = n; } satK[y] = en; }
+    for (let x = 0; x < pw; x++) { let n = 0, en = 0; for (let y = 0; y < ph; y++) { n = p[y * pw + x] ? n + 1 : 0; if (n > en) en = n; } sutK[x] = en; }
     const inceMi = (m, n) => { const out = new Uint8Array(n); let a = -1; for (let i = 0; i <= n; i++) { const k = i < n && m[i]; if (k && a < 0) a = i; else if (!k && a >= 0) { if (i - a <= 5) for (let j = a; j < i; j++) out[j] = 1; a = -1; } } return out; };
-    const mS = inceMi(cizgiSat, ph), mX = inceMi(cizgiSut, pw);
+    const mS = inceMi(satK.map(v => v >= pw * 0.2 ? 1 : 0), ph), mX = inceMi(sutK.map(v => v >= ph * 0.2 ? 1 : 0), pw);
     for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (mS[y] || mX[x]) p[y * pw + x] = 0;
-    // 1) satır projeksiyonu: koyu piksel sayısı; ince yatay çizgi (≤4 satır) yazı değildir
-    const sat = new Int32Array(ph);
-    for (let y = 0; y < ph; y++) { let n = 0; for (let x = 0; x < pw; x++) if (p[y * pw + x]) n++; sat[y] = n; }
-    const bloklar = []; let a = -1;
-    for (let i = 0; i <= sat.length; i++) {
-        const koyu = i < sat.length && sat[i] > 0;
-        if (koyu && a < 0) a = i; else if (!koyu && a >= 0) { bloklar.push([a, i - 1]); a = -1; }
+    // (1 px morfolojik açma DENENDİ: 6000 px PDF render'da rakam kalınlığı da 2 px → rakamlar parçalandı; kaldırıldı)
+    // 1) bağlı bileşenler (8-komşuluk, yığınla)
+    const etiket = new Int32Array(pw * ph); const bil = []; const yigin = new Int32Array(pw * ph);
+    for (let s = 0; s < pw * ph; s++) {
+        if (!p[s] || etiket[s]) continue;
+        const id = bil.length + 1; let top = 0; yigin[top++] = s; etiket[s] = id;
+        let x0 = pw, y0 = ph, x1 = -1, y1 = -1, n = 0;
+        while (top) {
+            const i = yigin[--top]; const x = i % pw, y = (i - x) / pw; n++;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+                if (!dx && !dy) continue; const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= pw || yy >= ph) continue;
+                const j = yy * pw + xx; if (p[j] && !etiket[j]) { etiket[j] = id; yigin[top++] = j; }
+            }
+        }
+        bil.push({ x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1, n });
     }
-    // Blok birleştirme: ≤2 satır boşluk (kopuk rakam parçaları) YA DA boşluğun tamamı maskelenmiş çizgi satırı ise
-    //   (rakamın ortasından geçen çizgi maskelenince rakam ikiye bölünüyordu). Çizgi dışı boşluklar (yazı ile
-    //   ölçü çizgisi arası) birleştirilmez — MAN 6984'te "270" altındaki oklarla 95 px'e büyümüştü.
-    const maskeli = (a, b) => { for (let y = a; y <= b; y++) if (!mS[y]) return false; return true; };
-    const bir = []; for (const b of bloklar) { const son = bir.length ? bir[bir.length - 1] : null; if (son && (b[0] - son[1] <= 3 || maskeli(son[1] + 1, b[0] - 1))) son[1] = b[1]; else bir.push(b.slice()); }
-    const aday = bir.filter(b => b[1] - b[0] + 1 >= 6 && b[1] - b[0] + 1 <= R * 1.35);   // yazı yüksekliği pencereyle orantılı
+    if (!bil.length) return null;
+    // 2) yazı adayı: ince uzun çizgi değil, pencereyi kaplayan şekil değil, içi boş büyük yay/daire değil
+    const aday = bil.filter(b => {
+        if (b.w >= R * 1.5 || b.h >= R * 1.5) return false;
+        // ince-uzun parçalar (3 px "1" rakamı ile 3 px çizgi kalıntısı) BURADA elenmez: MAN 6984'te "110"/"180"in
+        //   "1"i 3 px kalın olduğundan çizgi sanılıp düşüyordu; ayrım kümelemede (yalnız hizalıysa alınır, tohum olamaz)
+        const doluluk = b.n / (b.w * b.h);
+        if (Math.max(b.w, b.h) > 40 && doluluk < 0.10) return false;
+        // rakam boyutunda ama içi boş ince çember = DELİK (6FA'da 38 px delik dairesi "17"nin tohumu oldu); "0" rakamı
+        //   kalın yazıldığından doluluğu ≥ 0,35, ince çemberinki ≈ 0,17
+        //   (delik dairesi merkez artısıyla bitişik olabilir → 45×53, doluluk ≈ 0,24; "0" rakamı kare değil, 18×26)
+        //   Eğik yazılmış "R" harfi de kareye yakın ve seyrek (22×24, ≈0,25) — ayrım BOYUT: tek karakter pencereye göre
+        //   küçüktür (R*0.22 = 6000 px'te 31 px; delik 38 px), 20 px sabiti R50/R60/R5'i siliyordu (ölçüldü).
+        if (Math.min(b.w, b.h) >= R * 0.22 && Math.abs(b.w - b.h) <= 10 && doluluk < 0.36) return false;   // 4 px kalın çember ≈ 0,33
+        return b.w >= 2 && b.h >= 2;
+    });
     if (!aday.length) return null;
-    const my0 = my - py0;
-    const sb = aday.reduce((en, b) => { const d = my0 < b[0] ? b[0] - my0 : my0 > b[1] ? my0 - b[1] : 0; return d < en.d ? { b, d } : en; }, { b: null, d: Infinity });
-    if (!sb.b || sb.d > R * 0.45) return null;      // model sapması pencereyle orantılı (90 px → 40)
-    const y0 = py0 + sb.b[0], y1 = py0 + sb.b[1] + 1;
-    // 2) sütun projeksiyonu (yalnız o satır bloğunda); mx'e en yakın koyu sütun bloğu, ≤ yükseklik*0.6 boşlukları birleştir (rakam araları)
-    const sut = new Int32Array(pw);
-    for (let x = 0; x < pw; x++) { let n = 0; for (let y = y0 - py0; y < y1 - py0; y++) if (p[y * pw + x]) n++; sut[x] = n; }
-    // İNCE YATAY ÇİZGİ SÜTUNLARI BOŞLUK SAYILIR: satır bloğu içinde yalnız 1–2 piksel koyu olan sütun rakam değil,
-    //   yazının yanından başlayan ölçü çizgisidir (pencerenin %60'ını geçmediği için 0. adımda maskelenmemiş olabilir).
-    //   Ölçüldü (MAN 6984): "40" kutusu çizgiyle birleşip 173 px olmuştu; rakam sütunlarında koyu sayısı ≥ 3.
-    const esikSut = Math.max(2, Math.round((y1 - y0) * 0.12));
-    const sb2 = []; a = -1;
-    for (let i = 0; i <= sut.length; i++) { const koyu = i < sut.length && sut[i] > esikSut; if (koyu && a < 0) a = i; else if (!koyu && a >= 0) { sb2.push([a, i - 1]); a = -1; } }
-    if (!sb2.length) return null;
-    // rakam arası boşluk yüksekliğin yarısına kadar çıkabiliyor (MAN 6984 "270": 14 px / 35 px; %35 eşiği "270"i
-    // tek rakama böldü). Yazının yanındaki referans balonu dairesi bu eşikle kutuya karışabilir — kabul: kutu
-    // yalnız görsel çerçeve, balon numarası/değeri etkilenmez.
-    const bosluk = Math.max(5, Math.round((y1 - y0) * 0.5));
-    const bir2 = []; for (const b of sb2) { if (bir2.length && b[0] - bir2[bir2.length - 1][1] <= bosluk) bir2[bir2.length - 1][1] = b[1]; else bir2.push(b.slice()); }
-    const mx0 = mx - px0;
-    const sx = bir2.reduce((en, b) => { const d = mx0 < b[0] ? b[0] - mx0 : mx0 > b[1] ? mx0 - b[1] : 0; return d < en.d ? { b, d } : en; }, { b: null, d: Infinity });
-    if (!sx.b || sx.d > R * 0.67) return null;      // (90 px → 60)
-    let x0 = px0 + sx.b[0], x1 = px0 + sx.b[1] + 1;
+    const mx0 = mx - px0, my0 = my - py0;
+    const uzak = b => Math.hypot((b.x0 + b.x1) / 2 - mx0, (b.y0 + b.y1) / 2 - my0);
+    // 3) tohum: model konumuna en yakın, iki yönde de ≥5 px bileşen ("1" rakamı ile 4 px'lik çizgi parçası ayırt
+    //   edilemez → ikisi de tohum olamaz; "1" komşu olarak kümeye girer); kümeleme: yakın + benzer boyut
+    //   Tohum tercihi RAKAM BENZERİ bileşen (doluluk ≥ 0,28): delik dairesi maskeyle çeyrek yaylara bölünüyor (18×18,
+    //   doluluk 0,2) ve model konumuna daha yakın olduğundan tohum oluyordu ("17" kutusu delik oldu — ölçüldü).
+    const dol = b => b.n / (b.w * b.h);
+    const boyutlu = aday.filter(b => b.h >= 5 && b.w >= 5).sort((a, b) => uzak(a) - uzak(b));
+    const rakamsi = boyutlu.filter(b => dol(b) >= 0.28);
+    const tohum = (rakamsi.length && uzak(rakamsi[0]) <= R * 0.8) ? rakamsi[0] : boyutlu[0];
+    if (!tohum || uzak(tohum) > R * 0.8) return null;
+    const kume = [tohum]; const alindi = new Set(kume); let degisti = true;
+    while (degisti) {
+        degisti = false;
+        for (const b of aday) {
+            if (alindi.has(b)) continue;
+            for (const k of kume) {
+                // iki boyutlu yakınlık: bbox'lar arası boşluk (x ve y) — eğik yazılmış yarıçaplarda (R50, R60 ~45°)
+                //   ardışık karakterler dikey örtüşmez, satır kuralı yalnız "R"yi alıyordu (6FA'da ölçüldü)
+                const bX = Math.max(0, b.x0 - k.x1, k.x0 - b.x1), bY = Math.max(0, b.y0 - k.y1, k.y0 - b.y1);
+                // boyut kıyası ve mesafe TOHUMA göre (kümedeki son üyeye değil): MAN 6984'te yazının üstündeki referans
+                //   balonu dairesi (47×33) "benzer" sayılıp köprü oldu, komşu yazılar zincirleme birleşti (113×180)
+                const kb = Math.max(tohum.h, tohum.w), bb = Math.max(b.h, b.w);
+                const benzer = bb >= kb * 0.5 && bb <= kb * 1.5;                                     // karakter boyutları yakın
+                const kucuk = bb <= kb * 0.45;                                                       // nokta / virgül
+                const yakin = Math.hypot(bX, bY) <= kb * 0.6;                                        // rakam arası boşluk ≤ 0,6 h
+                // ince parça ("1" rakamı ya da 4–5 px'lik çizgi kalıntısı) yalnız kümeyle HİZALIYSA alınır: "1" yazıyla
+                //   aynı satırda/sütunda tam örtüşür, yazının altındaki çizgi parçası örtüşmez ("21" 43×63 olmuştu)
+                const oY = Math.min(k.y1, b.y1) - Math.max(k.y0, b.y0), oX = Math.min(k.x1, b.x1) - Math.max(k.x0, b.x0);
+                const ince = Math.min(b.w, b.h) <= 5 && Math.max(b.w, b.h) >= Math.min(b.w, b.h) * 3;
+                const hizali = oY >= 0.7 * Math.min(k.h, b.h) || oX >= 0.7 * Math.min(k.w, b.w);
+                if (ince && !hizali) continue;
+                // içi boş kareye yakın seyrek parça (delik çeyreği, doluluk ≈ 0,2) rakam değildir; eğik "R" ≈ 0,25 kalır
+                if (!kucuk && Math.abs(b.w - b.h) <= 4 && Math.min(b.w, b.h) >= 12 && dol(b) < 0.24) continue;
+                if ((benzer && yakin) || (kucuk && Math.hypot(bX, bY) <= kb * 0.5)) { kume.push(b); alindi.add(b); degisti = true; break; }
+            }
+        }
+    }
+    let x0 = Math.min(...kume.map(b => b.x0)), y0 = Math.min(...kume.map(b => b.y0));
+    let x1 = Math.max(...kume.map(b => b.x1)) + 1, y1 = Math.max(...kume.map(b => b.y1)) + 1;
     const h = y1 - y0;
-    // Kutu, yazının beklenen genişliğinden ÇOK büyükse (kalın ölçü/uzatma çizgisi rakamlara bitişik: MAN 6984'te
-    // "40" 116 px olmuştu) model konumu etrafında beklenen genişliğe kırpılır. Yatay yazı: beklenen = karakter × 0,75h;
-    // dikey (döndürülmüş) yazı: genişlik tek rakam yüksekliği ≈ h / karakter.
-    if (karakter > 0) {
-        const yatay = h < (x1 - x0) * 1.2;
-        const beklenen = Math.round(yatay ? h * 0.75 * karakter + h * 0.6 : (h / karakter) * 1.1 + 4);
-        if (x1 - x0 > beklenen * 1.6) { const c = Math.min(Math.max(mx, x0 + beklenen / 2), x1 - beklenen / 2); x0 = Math.round(c - beklenen / 2); x1 = Math.round(c + beklenen / 2); }
+    // 4) kalın çizgi rakama bitişikse bileşen uzar: beklenen genişliğin 1,6 katını aşan yatay kutu model konumu etrafında kırpılır
+    if (karakter > 0 && h < (x1 - x0) * 1.2) {
+        const beklenen = Math.round(h * 0.75 * karakter + h * 0.6);
+        if (x1 - x0 > beklenen * 1.6) { const c = Math.min(Math.max(mx0, x0 + beklenen / 2), x1 - beklenen / 2); x0 = Math.round(c - beklenen / 2); x1 = Math.round(c + beklenen / 2); }
     }
     const w = x1 - x0;
-    if (w < 6 || w > R * 3.6 || h < 6) return null;
-    return { x: x0, y: y0, width: w, height: h };
+    if (w < 4 || h < 4) return null;
+    return { x: px0 + x0, y: py0 + y0, width: w, height: h };
 }
 
 function aiGriVeri(kaynak) {

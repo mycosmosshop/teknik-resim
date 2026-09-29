@@ -90,8 +90,12 @@ boya(320, 0, 322, H); kutu = F.aiYaziKutusu(g, W, H, 306, 60);
 assert.deepStrictEqual(kutu, { x: 300, y: 40, width: 12, height: 40 }, 'dikey yazı + dikey çizgi: ' + JSON.stringify(kutu));
 
 // 6) kablolama + güvenlik
-assert(html.includes('id="autoBalloonBtn"') && html.includes('<script src="ai-balloon.js"></script>'), 'düğme/script yok');
-assert(html.indexOf('<script src="app.js"></script>') < html.indexOf('<script src="ai-balloon.js"></script>'), 'ai-balloon.js app.js\'den sonra yüklenmeli');
+const iApp = html.search(/<script src="app\.js(\?v=[^"]*)?"><\/script>/), iAi = html.search(/<script src="ai-balloon\.js(\?v=[^"]*)?"><\/script>/);
+assert(html.includes('id="autoBalloonBtn"') && iAi > 0, 'düğme/script yok');
+assert(iApp > 0 && iApp < iAi, 'ai-balloon.js app.js\'den sonra yüklenmeli');
+// önbellek kırıcı: iki script de aynı ?v= sürümünü taşımalı (yayında artırılır)
+const vApp = /app\.js\?v=([^"]+)"/.exec(html), vAi = /ai-balloon\.js\?v=([^"]+)"/.exec(html);
+assert(vApp && vAi && vApp[1] === vAi[1], 'app.js ve ai-balloon.js ?v= sürümleri aynı olmalı');
 assert(api.includes('id="geminiKey"') && api.includes("localStorage.setItem('ocr_gemini_key'") && api.includes("localStorage.getItem('ocr_gemini_key')"), 'API sayfası Gemini kartı');
 assert(!/AIza[0-9A-Za-z_-]{20,}/.test(js + html + api), 'kaynakta API anahtarı olmamalı');
 assert(js.includes('responseMimeType') && js.includes("'gemini-3.5-flash-lite'") && js.includes('ÖLÇÜLER 90 DERECE'), 'istem/model');
