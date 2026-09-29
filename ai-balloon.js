@@ -247,8 +247,11 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
     //   doluluk 0,2) ve model konumuna daha yakın olduğundan tohum oluyordu ("17" kutusu delik oldu — ölçüldü).
     const dol = b => b.n / (b.w * b.h);
     const boyutlu = aday.filter(b => b.h >= 5 && b.w >= 5).sort((a, b) => uzak(a) - uzak(b));
-    const rakamsi = boyutlu.filter(b => dol(b) >= 0.28);
-    const tohum = (rakamsi.length && uzak(rakamsi[0]) <= R * 0.8) ? rakamsi[0] : boyutlu[0];
+    // tohum: yakındaki (≤ R*0,5) rakamsı adaylardan EN BÜYÜĞÜ — en yakını almak eğik "0.1"de NOKTAYI (6×5) tohum yapıp
+    //   6×5'lik kutu üretiyordu (ölçüldü); nokta/virgül (max kenar < R*0,08) tohum olamaz
+    const rakamsi = boyutlu.filter(b => dol(b) >= 0.28 && Math.max(b.w, b.h) >= R * 0.08);
+    const yakinR = rakamsi.filter(b => uzak(b) <= R * 0.5).sort((a, b) => b.w * b.h - a.w * a.h);
+    const tohum = yakinR[0] || ((rakamsi.length && uzak(rakamsi[0]) <= R * 0.8) ? rakamsi[0] : boyutlu[0]);
     if (!tohum || uzak(tohum) > R * 0.8) return null;
     const kume = [tohum]; const alindi = new Set(kume); let degisti = true;
     while (degisti) {
@@ -271,8 +274,8 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
                 const ince = Math.min(b.w, b.h) <= 5 && Math.max(b.w, b.h) >= Math.min(b.w, b.h) * 3;
                 const hizali = oY >= 0.7 * Math.min(k.h, b.h) || oX >= 0.7 * Math.min(k.w, b.w);
                 if (ince && !hizali) continue;
-                // içi boş kareye yakın seyrek parça (delik çeyreği, doluluk ≈ 0,2) rakam değildir; eğik "R" ≈ 0,25 kalır
-                if (!kucuk && Math.abs(b.w - b.h) <= 4 && Math.min(b.w, b.h) >= 12 && dol(b) < 0.24) continue;
+                // (delik çeyreği elemesi KALDIRILDI: eğik ince "1" de kareye yakın ve seyrek (20×17, 0,20) — "0.1"in 1'i
+                //   düşüyordu; delik parçaları zaten tohum olamıyor ve 0,6h mesafe kısıtıyla kümeye girmiyor)
                 if ((benzer && yakin) || (kucuk && Math.hypot(bX, bY) <= kb * 0.5)) { kume.push(b); alindi.add(b); degisti = true; break; }
             }
         }
@@ -305,7 +308,7 @@ function aiDogrulaEslesir(beklenen, okunan) {
     const a = n(beklenen), b = n(okunan);
     if (!a || !b) return false;
     // önek kabul: eğik/küçük yazıda model bazen "0.1"i "0." diye kesik okuyor (ölçüldü) — yanlış kutuda bambaşka sayı çıkar
-    return a === b || a.startsWith(b);
+    return a === b || a.startsWith(b) || a.endsWith(b);   // kısmi kutu (dikey "417"de "17") sonek olarak da kabul
 }
 function aiKolajYerlesim(n, HW = 300, HH = 180, COLS = 4) {   // hücre büyütüldü: eğik küçük "0.1" 240×140'ta kesik okunuyordu
     const rows = Math.ceil(n / COLS);
