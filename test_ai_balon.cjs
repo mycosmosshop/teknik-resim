@@ -118,4 +118,9 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert.deepStrictEqual(ctx.annotations.map(a => a.number), [1, 2], '2 silinince 1,3 → 1,2: ' + JSON.stringify(ctx.annotations));
   assert(numaralandi === 1 && tabloKuruldu === 1 && cizildi === 1, 'numarala + tablo + çizim birer kez');
 }
+// 8) Ctrl+tekerlek zoom: adim hareketle orantili ve sinirli (tek event en cok ~%16) — sabit x1.1 katlanmasi kalkti
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf("canvas.addEventListener('wheel'"); const g = app.slice(i, app.indexOf('}, { passive: false });', i));
+  assert(!g.includes('? 0.9 : 1.1') && g.includes('Math.exp(') && g.includes('deltaMode'), 'zoom adimi orantili olmali');
+  const f = new Function('deltaY', 'deltaMode', 'const px = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? 400 : 1); return Math.exp(-Math.max(-60, Math.min(60, px)) * 0.0025);');
+  assert(f(1000, 0) > 0.85 && f(-1000, 0) < 1.17, 'tek event siniri'); assert(Math.abs(f(4, 0) - 0.99) < 0.01, 'kucuk hareket kucuk adim'); }
 console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');

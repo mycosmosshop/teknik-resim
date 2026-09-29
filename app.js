@@ -379,7 +379,10 @@ function setupEventListeners() {
     canvas.addEventListener('wheel', (e) => {
         if (!e.ctrlKey && !e.metaKey) return; // düz tekerlek: zoom yok, sayfa/pano normal kayar
         e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        // Adim tekerlek HAREKETI ile orantili: hassas fare / touchpad tek cevirmede onlarca event uretir, sabit x1.1
+        // her event'te katlaninca aninda 5x'e ucuyordu. deltaMode 1 = satir (Firefox), 2 = sayfa -> piksele cevir.
+        const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+        const delta = Math.exp(-Math.max(-60, Math.min(60, px)) * 0.0025);   // 100 px ~ x0.78 / x1.28, tek event en cok +-%16
         const newZoom = Math.max(0.3, Math.min(5.0, zoomLevel * delta));
 
         if (newZoom !== zoomLevel) {
