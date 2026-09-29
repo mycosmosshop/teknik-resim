@@ -177,6 +177,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Event listener'ları kur
 function setupEventListeners() {
+    // "Silince yeniden numarala" tercihi tarayıcıda kalıcı (varsayılan: tikli)
+    const rod = document.getElementById('renumberOnDelete');
+    if (rod) { rod.checked = localStorage.getItem('renumberOnDelete') !== 'false'; rod.addEventListener('change', () => localStorage.setItem('renumberOnDelete', rod.checked)); }
     const fileInput = document.getElementById('fileInput');
     const backupFileInput = document.getElementById('backupFileInput');
     const clearBtn = document.getElementById('clearBtn');
@@ -3315,6 +3318,14 @@ function updateLimits(id) {
 function deleteAnnotation(id) {
     annotations = annotations.filter(a => a.id !== id);
     document.getElementById(`row-${id}`).remove();
+    // "Silince yeniden numarala" tikliyse (varsayılan): kalanlar seçili sıralama yönüne göre, yön seçili değilse
+    // konuma göre (renumberAnnotations) 1'den itibaren yeniden numaralanır; tablo yeniden kurulur.
+    // Kullanım: otomatik balonlamadan sonra istenmeyen (0.1 tolerans gibi) satırlar silinince numaralar boşluksuz kalsın.
+    const cb = document.getElementById('renumberOnDelete');
+    if (cb && cb.checked && annotations.length) {
+        const dir = document.getElementById('autoNumberDirectionSelect');
+        if (dir && dir.value !== 'none') applyAutoNumbering(); else { renumberAnnotations(); rebuildTable(); }
+    }
     redrawCanvas();
 }
 

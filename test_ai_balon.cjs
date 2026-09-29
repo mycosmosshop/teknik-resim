@@ -100,4 +100,16 @@ assert(api.includes('id="geminiKey"') && api.includes("localStorage.setItem('ocr
 assert(!/AIza[0-9A-Za-z_-]{20,}/.test(js + html + api), 'kaynakta API anahtarı olmamalı');
 assert(js.includes('responseMimeType') && js.includes("'gemini-3.5-flash-lite'") && js.includes('ÖLÇÜLER 90 DERECE'), 'istem/model');
 assert(js.includes('autoAlignBalloons()') && js.includes('addTableRow(ann)') && js.includes('applyDefaultTolerances(ann)'), 'balon + tablo + hizalama akışı');
+// 7) silince yeniden numarala: tikli seçenek + deleteAnnotation gerçek gövdesi (yön seçili değil → konuma göre, tablo yeniden)
+assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli değil');
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf('function deleteAnnotation('); const g = app.slice(i, app.indexOf('\n}', i) + 2);
+  let numaralandi = 0, tabloKuruldu = 0, cizildi = 0;
+  const anns = [{ id: 1, number: 1 }, { id: 2, number: 2 }, { id: 3, number: 3 }];
+  const ctx = { annotations: anns, document: { getElementById: id => id === 'renumberOnDelete' ? { checked: true } : id === 'autoNumberDirectionSelect' ? { value: 'none' } : { remove() { } } },
+    renumberAnnotations: () => { numaralandi++; ctx.annotations.forEach((a, k) => a.number = k + 1); }, rebuildTable: () => tabloKuruldu++, redrawCanvas: () => cizildi++, applyAutoNumbering: () => { throw new Error('yön seçili değilken çağrılmamalı'); } };
+  new Function('annotations', 'document', 'renumberAnnotations', 'rebuildTable', 'redrawCanvas', 'applyAutoNumbering', g.replace('annotations = annotations.filter', 'annotations = this.annotations = annotations.filter').replace('function deleteAnnotation', 'this.deleteAnnotation = function') + '\nthis.deleteAnnotation(2);')
+    .call(ctx, ctx.annotations, ctx.document, ctx.renumberAnnotations, ctx.rebuildTable, ctx.redrawCanvas, ctx.applyAutoNumbering);
+  assert.deepStrictEqual(ctx.annotations.map(a => a.number), [1, 2], '2 silinince 1,3 → 1,2: ' + JSON.stringify(ctx.annotations));
+  assert(numaralandi === 1 && tabloKuruldu === 1 && cizildi === 1, 'numarala + tablo + çizim birer kez');
+}
 console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');
