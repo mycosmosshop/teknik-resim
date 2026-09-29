@@ -9,15 +9,18 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiCerceveDisi, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
 
 // 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
 const tk = F.aiTumKareler(3318, 2342);
-assert.strictEqual(tk.length, 30, 'toplam kare: ' + tk.length); assert.strictEqual(tk.filter(k => k.olcek === 2).length, 24);
+assert.strictEqual(tk.length, 60, 'toplam kare (tekrar dâhil): ' + tk.length); assert.strictEqual(tk.filter(k => k.olcek === 2).length, 48); assert.strictEqual(tk.filter(k => k.tekrar).length, 30);
 assert.deepStrictEqual(F.AI_BALON.GECISLER.map(g => g.kare), [1400, 700]);
 // büyük (≥14 MP) görüntüde yalnız 1400 geçişi: 6000×4238 → 5×4 = 20 kare, olcek 2 yok
 const tb = F.aiTumKareler(6000, 4238);
-assert.strictEqual(tb.length, 20, 'büyük görüntü kare: ' + tb.length); assert(tb.every(k => k.olcek === 1));
+assert.strictEqual(tb.length, 40, 'büyük görüntü kare (20 + tekrar 20): ' + tb.length); assert(tb.every(k => k.olcek === 1));
+// çerçeve şeridi: kenardaki tek karakter atılır, çok haneli ("300") ve iç bölgedeki tek karakter ("5") kalır
+assert(!F.aiCerceveDisi({ deger: '4', x: 500, y: 100 }, 6000, 4238) && !F.aiCerceveDisi({ deger: 'B', x: 80, y: 2000 }, 6000, 4238));
+assert(F.aiCerceveDisi({ deger: '300', x: 500, y: 100 }, 6000, 4238) && F.aiCerceveDisi({ deger: '5', x: 3000, y: 2000 }, 6000, 4238));
 // okuma kaynağı canvas değil: PDF sayfası yeniden çizilir / görüntünün doğal boyutu; app.js sayfayı saklar
 assert(js.includes('window.__aiPdfPage') && js.includes('naturalWidth') && js.includes('aiPencereKutusu(kaynak, KW, KH'), 'yüksek çözünürlük kaynağı');
 assert(fs.readFileSync(__dirname + '/app.js', 'utf8').includes('window.__aiPdfPage = page;'), 'loadPDF sayfayı saklamalı');

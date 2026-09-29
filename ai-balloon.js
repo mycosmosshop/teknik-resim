@@ -95,7 +95,17 @@ function aiKareCoz(liste, k, W, H) {
 function aiTumKareler(W, H, gecisler = AI_BALON.GECISLER) {
     const out = [], buyuk = W * H >= 14e6;
     for (const g of gecisler) { if (buyuk && g.olcek > 1) continue; for (const k of aiKareler(W, H, g.kare, g.ortusme)) out.push({ ...k, olcek: g.olcek }); }
-    return out;
+    // TEKRAR GEÇİŞİ: aynı kareler ikinci kez okunur, sonuçlar BİRLEŞTİRİLİR. Ölçüldü (Python'da da, burada da): model aynı
+    //   kareyi iki okumada farklı kapsıyor — ikinci çalıştırmada 21 / R5 / 0.1 düşmüştü. Kapsam şansa bırakılmaz; maliyet 2×.
+    return out.concat(out.map(k => ({ ...k, tekrar: true })));
+}
+
+// Sayfa ÇERÇEVESİ şeridindeki tek karakterli okumalar (pafta bölge numaraları 1–8, harfleri A–F) ölçü değildir — istem
+//   uyarısına rağmen "4" ve "6" balonlandı (ölçüldü). Kenar %4,5 şeridi + tek karakter → atılır; "300" gibi çok haneli kalır.
+function aiCerceveDisi(o, W, H) {
+    const tek = String(o.deger).trim().length <= 1;
+    const kenar = o.y < H * 0.045 || o.y > H * 0.955 || o.x < W * 0.03 || o.x > W * 0.97;
+    return !(tek && kenar);
 }
 
 // OKUMA KAYNAĞI — canvas değil, EN YÜKSEK çözünürlük: uygulama canvas'ı 4000×3000'e küçültüyor (6FA.881.989 TIFF
@@ -164,7 +174,7 @@ async function aiKareleriOku(kaynak, W, H, ayar, ilerleme) {
         const bulunan = aiKareCoz(aiCozumle(metin), k, W, H); ham.push(...bulunan);
         if (buyuk && k.olcek === 1) { kareOlcu.set(k, bulunan.length); if (bulunan.length >= 3) { const alt = aiAltKareler(k).map(a => ({ ...a, olcek2: true })); if (!kareler.some(q => q.olcek2 && q.x0 === alt[0].x0 && q.y0 === alt[0].y0)) kareler.push(...alt); } }
     }
-    return { olculer: aiTekille(ham, Math.max(90, Math.round(W / 35))), hatalar, kare: kareler.length };   // tekil eşiği çözünürlükle: 2× alt geçişte aynı ölçü ~100 px sapabiliyor (6FA)
+    return { olculer: aiTekille(ham.filter(o => aiCerceveDisi(o, W, H)), Math.max(90, Math.round(W / 35))), hatalar, kare: kareler.length };   // tekil eşiği çözünürlükle: 2× alt geçişte aynı ölçü ~100 px sapabiliyor (6FA)
 }
 
 // Model konumunun (mx,my) yakınındaki YAZI kutusu — bağlı bileşen (connected component) yöntemi.
