@@ -9,7 +9,7 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
 
 // 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
 const tk = F.aiTumKareler(3318, 2342);
@@ -123,4 +123,9 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert(!g.includes('? 0.9 : 1.1') && g.includes('Math.exp(') && g.includes('deltaMode'), 'zoom adimi orantili olmali');
   const f = new Function('deltaY', 'deltaMode', 'const px = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? 400 : 1); return Math.exp(-Math.max(-60, Math.min(60, px)) * 0.0025);');
   assert(f(1000, 0) > 0.85 && f(-1000, 0) < 1.17, 'tek event siniri'); assert(Math.abs(f(4, 0) - 0.99) < 0.01, 'kucuk hareket kucuk adim'); }
+// 9) kolaj dogrulama: beklenen/okunan eslesmesi (sayi kismi; R/± onekleri atilir; kisa onek kabul) + kolaj yerlesimi
+assert(F.aiDogrulaEslesir('R 50','R50') && F.aiDogrulaEslesir('80 ±20','80') && F.aiDogrulaEslesir('40','±40') && F.aiDogrulaEslesir('12,5','12.5'), 'eslesmeli');
+assert(!F.aiDogrulaEslesir('15','R10') && !F.aiDogrulaEslesir('21','15.1') && !F.aiDogrulaEslesir('0.1','') && !F.aiDogrulaEslesir('15','1'), 'eslesmemeli (yanlis kutu / bos)');
+{ const L = F.aiKolajYerlesim(12); assert(L.W === 1200 && L.H === 420 && L.hucre.length === 12 && L.hucre[7].x === 480 && L.hucre[7].y === 140); }
+assert(js.includes('aiKolajDogrula(kaynak, dogrulanacak') && js.includes('ELENEN: '), 'dogrulama akisa bagli degil');
 console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');

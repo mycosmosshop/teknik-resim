@@ -44,12 +44,12 @@ function aiTekille(liste, esik = 90) {
     return temiz;
 }
 
-async function aiGemini(b64, model, key) {
+async function aiGemini(b64, model, key, istem = AI_BALON.ISTEM) {
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
     const r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            contents: [{ parts: [{ text: AI_BALON.ISTEM }, { inline_data: { mime_type: 'image/png', data: b64 } }] }],
+            contents: [{ parts: [{ text: istem }, { inline_data: { mime_type: 'image/png', data: b64 } }] }],
             generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
         })
     });
@@ -286,6 +286,45 @@ function aiGriVeri(kaynak) {
     return g;
 }
 
+// ── KUTU DOĞRULAMA (kolaj): bulunan kutu kırpıntıları tek görüntüde (5 sütun × N satır, hücre numaralı) modele geri
+//    okutulur. Ölçüldü (6FA): model 1. geçişte "15"in konumunu ~300 px yanlış verdi, kutu ok ucuna oturdu ("R10" okundu);
+//    "21" kutusu "15.1"i sarmıştı. Okunan değer beklenenle uyuşmayan ya da boş dönen kutu ELENİR (yanlış balon, eksik
+//    balondan kötüdür); elenenler bildirimde listelenir. Maliyet: 15 kutuda 1 istek.
+function aiDogrulaEslesir(beklenen, okunan) {
+    const n = s => { const m = /[0-9]+(?:[.,][0-9]+)?/.exec(String(s || '')); return m ? m[0].replace(',', '.') : ''; };   // ilk sayı grubu ("80 ±20" → 80)
+    const a = n(beklenen), b = n(okunan);
+    if (!a || !b) return false;
+    return a === b || (b.length >= 2 && a.startsWith(b));
+}
+function aiKolajYerlesim(n, HW = 240, HH = 140, COLS = 5) {
+    const rows = Math.ceil(n / COLS);
+    return { W: COLS * HW, H: rows * HH, hucre: Array.from({ length: n }, (_, i) => ({ x: (i % COLS) * HW, y: Math.floor(i / COLS) * HH, w: HW, h: HH })) };
+}
+async function aiKolajDogrula(kaynak, adaylar, ayar, ilerleme) {
+    const okunan = new Map(); const PARTI = 15; let son = 0;
+    for (let p = 0; p < adaylar.length; p += PARTI) {
+        if (AI_BALON.iptal) break;
+        const grup = adaylar.slice(p, p + PARTI); const L = aiKolajYerlesim(grup.length);
+        const c = document.createElement('canvas'); c.width = L.W; c.height = L.H; const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, L.W, L.H); g.strokeStyle = '#888'; g.fillStyle = '#000'; g.font = 'bold 14px Arial';
+        grup.forEach(({ k }, i) => {
+            const h = L.hucre[i], pad = 6, sx = Math.max(0, k.x - pad), sy = Math.max(0, k.y - pad), sw = k.width + 2 * pad, sh = k.height + 2 * pad;
+            const s = Math.min(3, (h.w - 30) / sw, (h.h - 30) / sh), dw = Math.max(1, sw * s), dh = Math.max(1, sh * s);
+            g.drawImage(kaynak, sx, sy, sw, sh, h.x + (h.w - dw) / 2, h.y + (h.h - dh) / 2, dw, dh);
+            g.strokeRect(h.x + 0.5, h.y + 0.5, h.w - 1, h.h - 1); g.fillText(String(i), h.x + 4, h.y + 16);
+        });
+        ilerleme(Math.min(p + PARTI, adaylar.length), adaylar.length);
+        const istem = 'Bu görüntü bir kolaj: ' + grup.length + ' hücre var, her hücrenin sol üst köşesinde hücre numarası (0\'dan başlar) yazar. Her hücrede bir teknik resimden kırpılmış ÖLÇÜ YAZISI olması beklenir (48, R5, 12.5, ø8, 0.1 gibi; yazı yan yatmış ya da eğik olabilir). Her hücre için hücrede okunan ölçü metnini döndür. Hücrede okunabilir bir sayı YOKSA (yalnız çizgi, ok ucu, daire, boşluk) değer olarak "" yaz. Yalnız JSON dizisi: [{"i":0,"deger":"48"}, ...]';
+        const bekle = AI_BALON.KADANS_MS - (Date.now() - son); if (son && bekle > 0) await aiUyu(bekle); son = Date.now();
+        let metin = null;
+        try { metin = await aiGemini(c.toDataURL('image/png').split(',')[1], ayar.model, ayar.key, istem); }
+        catch (e) { if (e.status === 429 || e.status >= 500) { await aiUyu(aiBeklemeSn(e.body, 8) * 1000); try { metin = await aiGemini(c.toDataURL('image/png').split(',')[1], ayar.model, ayar.key, istem); } catch (e2) { metin = null; } } }
+        if (metin === null) continue;                         // doğrulanamadı → bu parti olduğu gibi kabul
+        for (const x of aiCozumle(metin)) { const i = +x.i; if (i >= 0 && i < grup.length) okunan.set(grup[i], String(x.deger == null ? '' : x.deger).trim()); }
+    }
+    return okunan;   // aday → okunan metin (doğrulanamayan adaylar Map'te yok)
+}
+
 function aiDurum(msg, tip) {
     let el = document.getElementById('aiBalonDurum');
     if (!el) { el = document.createElement('div'); el.id = 'aiBalonDurum'; el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;background:#2c3e50;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.3);max-width:80vw'; document.body.appendChild(el); }
@@ -317,6 +356,11 @@ async function autoBalloonAI() {
         //   denendi, büyük fontlu doğru kutuları da kırptı; o yüzden kutu yalnız kendi geometrisiyle belirlenir.
         const R = Math.round(90 / Math.min(1, oran));          // pencere yarıçapı: canvas'ta 90 px'e denk gelen orijinal piksel
         const kutular = olculer.map(o => ({ o, k: aiPencereKutusu(kaynak, KW, KH, o.x, o.y, R, String(o.deger).length) }));
+        // kolaj doğrulaması: kutu kırpıntısı modele geri okutulur; boş ya da beklenenle uyuşmayan kutu elenir
+        const dogrulanacak = kutular.filter(x => x.k);
+        const okunan = await aiKolajDogrula(kaynak, dogrulanacak, ayar, (i, n) => aiDurum('🤖 Kutular doğrulanıyor: ' + i + '/' + n));
+        const elenen = [];
+        for (const x of dogrulanacak) { if (okunan.has(x) && !aiDogrulaEslesir(x.o.deger, okunan.get(x))) { elenen.push(x.o.deger + (okunan.get(x) ? ' (kutuda "' + okunan.get(x) + '" okundu)' : ' (kutuda yazı yok)')); x.k = null; } }
         for (const { o, k: ko } of kutular) {
             if (!ko) { hayalet++; continue; }
             const k = { x: ko.x * oran, y: ko.y * oran, width: ko.width * oran, height: ko.height * oran };   // canvas uzayı
@@ -337,7 +381,7 @@ async function autoBalloonAI() {
         balloonCounter += eklenen;
         if (eklenen) autoAlignBalloons();      // kullanıcı isteği: otomatik balonlamadan sonra hizala + yeniden numarala
         redrawCanvas();
-        const ozet = '✓ ' + eklenen + ' ölçü balonlandı (' + kare + ' kare)' + (hayalet ? ' · ' + hayalet + ' okuma mürekkep bulunamadığı için atıldı' : '') + (cakisan ? ' · ' + cakisan + ' zaten balonluydu' : '') + (hatalar.length ? ' · HATA: ' + hatalar.join(', ') : '') + ' — Ölçü tablosundan kontrol edin.';
+        const ozet = '✓ ' + eklenen + ' ölçü balonlandı (' + kare + ' kare)' + (hayalet ? ' · ' + hayalet + ' okuma kutu bulunamadığı/doğrulanamadığı için atıldı' : '') + (elenen.length ? ' · ELENEN: ' + elenen.join(', ') + ' — bunları elle balonlayın' : '') + (cakisan ? ' · ' + cakisan + ' zaten balonluydu' : '') + (hatalar.length ? ' · HATA: ' + hatalar.join(', ') : '') + ' — Ölçü tablosundan kontrol edin.';
         aiDurum(ozet, hatalar.length ? 'err' : 'ok'); showNotification(ozet, 'success');
         if (!eklenen && !hatalar.length) alert('Gemini bu çizimde ölçü çizgisine bağlı sayı bulamadı. Manuel balonlama ile devam edebilirsiniz.');
         if (hatalar.length) alert('Okuma hataları:\n' + hatalar.join('\n') + '\n\n400/403: API anahtarı ya da model adı hatalı (⚙️ API). 429: kota — biraz sonra tekrar deneyin.');
