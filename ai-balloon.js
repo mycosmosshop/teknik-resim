@@ -15,7 +15,7 @@ const AI_BALON = {
     //   geçişte de gelirse tekilleştirme (90 px) teke indirir. Maliyet: A3 çizimde 6 + 24 = 30 istek (~1,5 dk).
     GECISLER: [{ kare: 1400, ortusme: 200, olcek: 1 }, { kare: 700, ortusme: 120, olcek: 2 }],
     MODELLER: ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-3-flash-preview'],
-    ISTEM: "Bu bir teknik resmin bir bölümü. Görevin BOYUTSAL ÖLÇÜLERİ okumak.\nSADECE ölçü çizgisine bağlı sayıları listele.\nLİSTELEME: daire içindeki referans/pozisyon numaraları, sayfa çerçevesi pafta numaraları, standart kodları (VW 10500, DIN 1451, TL 1010, ISO 845 gibi), not cümlelerinin içindeki sayılar, tablo hücreleri, antet/başlık bloğu, revizyon tablosu.\nÖLÇÜLER 90 DERECE DÖNDÜRÜLMÜŞ (DİKEY) DE YAZILIR: yandan görünüşlerde ve dar alanlarda sayı yan yatar. Bunları da oku, atlama.\nYARIÇAP VE ÇAP ÖLÇÜLERİNİ DE LİSTELE: R15, R50, ø8 gibi. Öneki (R ya da ø) mutlaka koru — \"R15\" yaz, \"15\" değil. Yarıçaplar genelde küçük ve EĞİK yazılır, kavis okuyla gösterilir; kösede ya da çizimin kenarinda kalanları da atlama.\nGENEL TOLERANS TABLOSUNU LİSTELEME: \">400 \" ile başlayan aralık-tolerans satırları ve açı toleransı ölçü DEĞİLDİR; o tablodaki 400, 120, 30, 6, 2.0, 1.6, 0.6, 0.3 gibi sayıları yazma.\nÖLÇEK NOTUNU ASLA LİSTELEME: \"1:5\", \"1:1\", \"2:1\" gibi oranlar ve bunların yanındaki görünüş/detay adları ölçü DEĞİLDİR; oranın tek bir rakamını da (1 ya da 5) ölçü diye yazma. Aynı şekilde kağıt formatı (A1, A3), tarih (31.07.2025), sayfa no ve ağırlık (63g) ölçü değildir.\nGEOMETRİK TOLERANS ÇERÇEVESİNDEKİ DEĞERLERİ LİSTELEME: konum/düzlemsellik/profil çerçevelerindeki 0.1, 0.5 gibi sayılar ve datum harfleri ölçü DEĞİLDİR (6FA.881.989'da üç kez balonlanmıştı).\nOndalık ayracı NOKTA yaz. Çap işaretini ø, yarıçapı R olarak koru.\nHer ölçü için: {\"deger\": \"48\", \"x\": 123, \"y\": 456}\nx,y = ölçü YAZISININ bu görüntüdeki piksel merkezi (sol üst köşe 0,0).\nYalnız JSON dizisi döndür, başka hiçbir şey yazma.",
+    ISTEM: "Bu bir teknik resmin bir bölümü. Görevin BOYUTSAL ÖLÇÜLERİ okumak.\nSADECE ölçü çizgisine bağlı sayıları listele.\nLİSTELEME: daire içindeki referans/pozisyon numaraları, sayfa çerçevesi pafta numaraları, standart kodları (VW 10500, DIN 1451, TL 1010, ISO 845 gibi), not cümlelerinin içindeki sayılar, tablo hücreleri, antet/başlık bloğu, revizyon tablosu.\nÖLÇÜLER 90 DERECE DÖNDÜRÜLMÜŞ (DİKEY) DE YAZILIR: yandan görünüşlerde ve dar alanlarda sayı yan yatar. Bunları da oku, atlama.\nYARIÇAP VE ÇAP ÖLÇÜLERİNİ DE LİSTELE: R15, R50, ø8 gibi. Öneki (R ya da ø) mutlaka koru — \"R15\" yaz, \"15\" değil. Yarıçaplar genelde küçük ve EĞİK yazılır, kavis okuyla gösterilir; kösede ya da çizimin kenarinda kalanları da atlama.\nGENEL TOLERANS TABLOSUNU LİSTELEME: \">400 \" ile başlayan aralık-tolerans satırları ve açı toleransı ölçü DEĞİLDİR; o tablodaki 400, 120, 30, 6, 2.0, 1.6, 0.6, 0.3 gibi sayıları yazma.\nÖLÇEK NOTUNU ASLA LİSTELEME: \"1:5\", \"1:1\", \"2:1\" gibi oranlar ve bunların yanındaki görünüş/detay adları ölçü DEĞİLDİR; oranın tek bir rakamını da (1 ya da 5) ölçü diye yazma. Aynı şekilde kağıt formatı (A1, A3), tarih (31.07.2025), sayfa no ve ağırlık (63g) ölçü değildir.\nGEOMETRİK TOLERANS ÇERÇEVELERİNİ DE LİSTELE (konum ⌖ 0.1, profil ⌓ 0.5, düzlemsellik gibi): değer olarak çerçevedeki sayıyı yaz (\"0.1\"), datum harfini yazma. Ölçü çizgisine bağlı bir sayının yanındaki ± tolerans ise ayrı bir ölçü değildir.\nOndalık ayracı NOKTA yaz. Çap işaretini ø, yarıçapı R olarak koru.\nHer ölçü için: {\"deger\": \"48\", \"x\": 123, \"y\": 456}\nx,y = ölçü YAZISININ bu görüntüdeki piksel merkezi (sol üst köşe 0,0).\nYalnız JSON dizisi döndür, başka hiçbir şey yazma.",
     iptal: false
 };
 
@@ -125,10 +125,24 @@ function aiPencereKutusu(kaynak, KW, KH, mx, my, R, karakter) {
     return k ? { x: k.x + x0, y: k.y + y0, width: k.width, height: k.height } : null;
 }
 
+// Bir 1400 px karenin 700 px / 2× alt kareleri (örtüşmeli): büyük görüntüde ölçü YOĞUN karelerde ikinci bakış.
+//   Ölçüldü (kullanıcı çizimi): delik grubu çevresindeki dikey "15" ve küçük tolerans değerleri tek bakışta atlanıyordu;
+//   tüm görüntüyü 2× okumak 100 istek ederdi, yoğun karelerde 4'er alt kare ~30 istek.
+function aiAltKareler(k, kare = 700, ortusme = 0) {   // örtüşmesiz: 4 alt kare (120 px örtüşme 9 kare ediyordu, kota)
+    const out = [];
+    for (let y0 = k.y0; y0 < k.y1; y0 += kare - ortusme) for (let x0 = k.x0; x0 < k.x1; x0 += kare - ortusme) {
+        const x1 = Math.min(x0 + kare, k.x1), y1 = Math.min(y0 + kare, k.y1);
+        if (x1 - x0 < 200 || y1 - y0 < 200) continue;
+        out.push({ x0, y0, x1, y1, olcek: 2 });
+    }
+    return out;
+}
+
 async function aiKareleriOku(kaynak, W, H, ayar, ilerleme) {
     const kareler = aiTumKareler(W, H);
     const modeller = [ayar.model, ...AI_BALON.MODELLER.filter(m => m !== ayar.model)];
     let mi = 0, son = 0; const ham = []; const hatalar = [];
+    const buyuk = W * H >= 14e6; const kareOlcu = new Map();    // 1. geçiş kare başına bulunan ölçü sayısı
     for (let i = 0; i < kareler.length; i++) {
         if (AI_BALON.iptal) break;
         const k = kareler[i], w = k.x1 - k.x0, h = k.y1 - k.y0, s = k.olcek || 1;
@@ -147,9 +161,10 @@ async function aiKareleriOku(kaynak, W, H, ayar, ilerleme) {
             }
         }
         if (metin === null) { if (!hatalar.length || hatalar[hatalar.length - 1].indexOf('kare ' + (i + 1)) < 0) hatalar.push('kare ' + (i + 1) + ': yanıt yok'); continue; }
-        ham.push(...aiKareCoz(aiCozumle(metin), k, W, H));
+        const bulunan = aiKareCoz(aiCozumle(metin), k, W, H); ham.push(...bulunan);
+        if (buyuk && k.olcek === 1) { kareOlcu.set(k, bulunan.length); if (bulunan.length >= 3) { const alt = aiAltKareler(k).map(a => ({ ...a, olcek2: true })); if (!kareler.some(q => q.olcek2 && q.x0 === alt[0].x0 && q.y0 === alt[0].y0)) kareler.push(...alt); } }
     }
-    return { olculer: aiTekille(ham), hatalar, kare: kareler.length };
+    return { olculer: aiTekille(ham, Math.max(90, Math.round(W / 35))), hatalar, kare: kareler.length };   // tekil eşiği çözünürlükle: 2× alt geçişte aynı ölçü ~100 px sapabiliyor (6FA)
 }
 
 // Model konumunun (mx,my) yakınındaki YAZI kutusu — bağlı bileşen (connected component) yöntemi.

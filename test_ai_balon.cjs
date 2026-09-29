@@ -9,7 +9,7 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
 
 // 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
 const tk = F.aiTumKareler(3318, 2342);
@@ -100,6 +100,12 @@ assert(api.includes('id="geminiKey"') && api.includes("localStorage.setItem('ocr
 assert(!/AIza[0-9A-Za-z_-]{20,}/.test(js + html + api), 'kaynakta API anahtarı olmamalı');
 assert(js.includes('responseMimeType') && js.includes("'gemini-3.5-flash-lite'") && js.includes('ÖLÇÜLER 90 DERECE'), 'istem/model');
 assert(js.includes('autoAlignBalloons()') && js.includes('addTableRow(ann)') && js.includes('applyDefaultTolerances(ann)'), 'balon + tablo + hizalama akışı');
+// 6b) yoğun kare alt geçişi: 1400 px kare → 700 px / 2× örtüşmeli 4 alt kare; kenar artığı < 200 px atlanır; istem GT çerçevelerini ister
+{ const alt = F.aiAltKareler({ x0: 1200, y0: 0, x1: 2600, y1: 1400 });
+  assert.strictEqual(alt.length, 4, 'alt kare: ' + alt.length); assert(alt.every(a => a.olcek === 2 && a.x0 >= 1200 && a.x1 <= 2600));
+  assert.strictEqual(F.aiAltKareler({ x0: 4800, y0: 3600, x1: 6000, y1: 4238 }).length, 2, '1200×638 kare: 2 sütun × 1 satır (58 px artık atlanır)');
+  assert(js.includes('GEOMETRİK TOLERANS ÇERÇEVELERİNİ DE LİSTELE') && js.includes('bulunan.length >= 3'), 'GT istemi / yoğun kare geçişi');
+}
 // 7) silince yeniden numarala: tikli seçenek + deleteAnnotation gerçek gövdesi (yön seçili değil → konuma göre, tablo yeniden)
 assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli değil');
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf('function deleteAnnotation('); const g = app.slice(i, app.indexOf('\n}', i) + 2);
