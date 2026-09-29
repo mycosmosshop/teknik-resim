@@ -131,4 +131,10 @@ assert(F.aiDogrulaEslesir('R 50','R50') && F.aiDogrulaEslesir('80 ±20','80') &&
 assert(!F.aiDogrulaEslesir('15','R10') && !F.aiDogrulaEslesir('21','15.1') && !F.aiDogrulaEslesir('0.1','') && !F.aiDogrulaEslesir('15','1'), 'eslesmemeli (yanlis kutu / bos)');
 { const L = F.aiKolajYerlesim(12); assert(L.W === 1200 && L.H === 420 && L.hucre.length === 12 && L.hucre[7].x === 480 && L.hucre[7].y === 140); }
 assert(js.includes('aiKolajDogrula(kaynak, dogrulanacak') && js.includes('ELENEN: '), 'dogrulama akisa bagli degil');
+// 10) Sıfırla düğmesi: Fit yanında, clearAll'a bağlı; clearAll onay sorar, fileName yoksa hata vermez, PDF sayfasını bırakır
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8');
+  assert(html.includes('id="resetAllBtn"') && html.indexOf('id="zoomResetBtn"') < html.indexOf('id="resetAllBtn"'), 'Sıfırla düğmesi Fit yanında olmalı');
+  assert(app.includes("resetAllBtn.addEventListener('click', clearAll)"), "düğme clearAll'a bağlı değil");
+  const i = app.indexOf('function clearAll()'); const g = app.slice(i, app.indexOf(String.fromCharCode(10) + '}', i));
+  assert(g.includes("confirm('TÜM VERİLERİ") && g.includes("if (fn) fn.textContent") && g.includes('window.__aiPdfPage = null') && g.includes('lines = []'), 'clearAll: onay / fileName güvenliği / PDF ve çizgi sıfırlama'); }
 console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');

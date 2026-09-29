@@ -370,6 +370,8 @@ function setupEventListeners() {
         updateCanvasTransform();
     });
     
+    const resetAllBtn = document.getElementById('resetAllBtn');
+    if (resetAllBtn) resetAllBtn.addEventListener('click', clearAll);   // Sıfırla: onay sorar; resim+balon+tablo+metin temizlenir, yeni resim yüklenebilir
     zoomResetBtn.addEventListener('click', () => {
         fitToScreen();
     });
@@ -3424,7 +3426,8 @@ function clearImage() {
         // File input'u sıfırla
         const fileInput = document.getElementById('fileInput');
         if (fileInput) fileInput.value = '';
-        document.getElementById('fileName').textContent = '';
+        const fn = document.getElementById('fileName'); if (fn) fn.textContent = '';   // eleman bu sayfada yok — hata verip yarıda kalıyordu
+        window.__aiPdfPage = null;                                                     // Otomatik Balonla yeni resmi okusun
         
         showNotification('Resim temizlendi', 'success');
         console.log('🗑️ Resim temizlendi');
@@ -3451,6 +3454,7 @@ function clearAll() {
     if (confirm('TÜM VERİLERİ silmek istediğinizden emin misiniz?\n(Resim, balonlar, tablo, metinler)')) {
         annotations = [];
         textAnnotations = [];
+        lines = []; history = [];
         balloonCounter = 1;
         currentImage = null;
         imageLoaded = false;
@@ -3462,7 +3466,8 @@ function clearAll() {
         // File input'u sıfırla
         const fileInput = document.getElementById('fileInput');
         if (fileInput) fileInput.value = '';
-        document.getElementById('fileName').textContent = '';
+        const fn = document.getElementById('fileName'); if (fn) fn.textContent = '';   // eleman bu sayfada yok — hata verip yarıda kalıyordu
+        window.__aiPdfPage = null;                                                     // Otomatik Balonla yeni resmi okusun
         
         // Zoom'u sıfırla
         zoomLevel = 1.0;
