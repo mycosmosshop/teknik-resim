@@ -1,0 +1,88 @@
+// Otomatik balonlama (ai-balloon.js) — saf parçalar gerçek gövdeyle:
+//   node test_ai_balon.cjs
+// 1) kare bölme (1400/200 örtüşme), 2) normalize koordinat → global piksel, tolerans metni elenir,
+// 3) tekilleştirme, 4) JSON ayıklama, 5) mürekkep kutusu (hayalet okuma → null), 6) sayfa kablolaması, anahtar kaynakta yok
+const fs = require('fs'), assert = require('assert');
+const js = fs.readFileSync(__dirname + '/ai-balloon.js', 'utf8');
+const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
+const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
+
+// gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
+const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+
+// 1) kareler: 3318×2342 → x: 0,1200,2400 · y: 0,1200 = 6 kare; kenar artığı < 200 px atlanır
+let k = F.aiKareler(3318, 2342);
+assert.strictEqual(k.length, 6, 'kare sayısı'); assert.deepStrictEqual(k[0], { x0: 0, y0: 0, x1: 1400, y1: 1400 });
+assert.deepStrictEqual(k[5], { x0: 2400, y0: 1200, x1: 3318, y1: 2342 });
+assert.strictEqual(F.aiKareler(1450, 1000).length, 2, '1450 px: ikinci kare 250 px → dahil'); assert.strictEqual(F.aiKareler(1350, 1000).length, 1, '1350 px: ikinci kare 150 px → atlanır');
+
+// 2) normalize → global; tolerans metni ("+0.2") ve dışarı taşan atılır
+const c = F.aiKareCoz([{ deger: '48', x: 500, y: 250 }, { deger: '+0.2', x: 1, y: 1 }, { deger: 'R15', x: 999, y: 999 }, { deger: '', x: 1, y: 1 }], { x0: 1200, y0: 0, x1: 2600, y1: 1400 }, 3318, 2342);
+assert.strictEqual(c.length, 2); assert.strictEqual(c[0].x, 1200 + 700); assert.strictEqual(c[0].y, 350); assert.strictEqual(c[1].deger, 'R15');
+
+// 3) tekilleştirme: örtüşen karelerden aynı ölçü 90 px içinde tek
+const t = F.aiTekille([{ deger: '48', x: 100, y: 100 }, { deger: '48', x: 150, y: 120 }, { deger: '48', x: 400, y: 100 }, { deger: '50', x: 150, y: 120 }]);
+assert.strictEqual(t.length, 3);
+
+// 4) JSON ayıklama (kod bloğu içinde de olur)
+assert.deepStrictEqual(F.aiCozumle('```json\n[{"deger":"48","x":1,"y":2}]\n```'), [{ deger: '48', x: 1, y: 2 }]);
+assert.deepStrictEqual(F.aiCozumle('yanıt yok'), []); assert.deepStrictEqual(F.aiCozumle('[{bozuk'), []);
+assert.strictEqual(F.aiBeklemeSn('Please retry in 7.6s', 5), 9.1); assert.strictEqual(F.aiBeklemeSn('', 5), 5);
+
+// 5) mürekkep kutusu: 400×300 beyaz sayfa, (150..190, 100..124) rakam bloğu (2 rakam, 4 px aralık), altında 140 px'lik ince ölçü çizgisi
+const W = 400, H = 300, g = new Uint8Array(W * H).fill(255);
+const boya = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g[y * W + x] = 0; };
+boya(150, 100, 168, 124); boya(172, 100, 190, 124);   // "48" iki rakam
+boya(120, 140, 260, 142);                             // ölçü çizgisi (2 px)
+let kutu = F.aiYaziKutusu(g, W, H, 165, 110);
+assert.deepStrictEqual(kutu, { x: 150, y: 100, width: 40, height: 24 }, 'kutu rakam bloğuna oturmalı: ' + JSON.stringify(kutu));
+kutu = F.aiYaziKutusu(g, W, H, 200, 135);             // model konumu biraz kaymış: yine aynı kutu (çizgi ≤4 px → yazı sayılmaz)
+assert.deepStrictEqual(kutu, { x: 150, y: 100, width: 40, height: 24 }, 'kaymış konumda: ' + JSON.stringify(kutu));
+assert.strictEqual(F.aiYaziKutusu(g, W, H, 350, 250), null, 'mürekkep yok → hayalet → null');
+// dikey (90° döndürülmüş) yazı: 12×40 blok
+boya(300, 40, 312, 80); kutu = F.aiYaziKutusu(g, W, H, 306, 60);
+assert.deepStrictEqual(kutu, { x: 300, y: 40, width: 12, height: 40 });
+// ÖLÇÜ ÇİZGİLERİ (MAN 6984 vakası): yazının ORTASINDAN geçen uzun yatay çizgi + yanından geçen dikey çizgi → kutu yine rakam bloğu
+boya(0, 112, W, 114);                                  // yatay ölçü çizgisi "48"in ortasından, pencereyi boydan boya geçer
+boya(200, 0, 202, H);                                  // dikey ölçü çizgisi, pencerede her satırı koyu yapar
+kutu = F.aiYaziKutusu(g, W, H, 165, 110);
+assert.deepStrictEqual(kutu, { x: 150, y: 100, width: 40, height: 24 }, 'çizgiler maskelenmeli: ' + JSON.stringify(kutu));
+// yazının SAĞINDAN başlayan yatay ölçü çizgisi (pencerenin %48'i → maskelenmez): kutu çizgiyle BİRLEŞMEMELİ
+const g2 = new Uint8Array(W * H).fill(255); const boya2 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g2[y * W + x] = 0; };
+boya2(150, 100, 168, 124); boya2(172, 100, 190, 124); boya2(192, 111, 280, 113);
+kutu = F.aiYaziKutusu(g2, W, H, 165, 110);
+assert.deepStrictEqual(kutu, { x: 150, y: 100, width: 40, height: 24 }, 'yandan çizgi kutuyu uzatmamalı: ' + JSON.stringify(kutu));
+// KALIN (4 px) çizgi rakamlara bitişik → sütun eşiğini geçer, kutu 130 px olur; karakter sayısı verilince beklenen genişliğe kırpılır
+const g3 = new Uint8Array(W * H).fill(255); const boya3 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g3[y * W + x] = 0; };
+boya3(150, 100, 168, 124); boya3(172, 100, 190, 124); boya3(190, 110, 280, 114);
+kutu = F.aiYaziKutusu(g3, W, H, 168, 112, 90, 2);
+assert(kutu && kutu.width <= 60 && kutu.x >= 140 && kutu.x + kutu.width >= 185, 'kalın çizgi: beklenen genişliğe kırpılmalı: ' + JSON.stringify(kutu));
+assert.strictEqual(F.aiYaziKutusu(g3, W, H, 168, 112).width, 40, 'kalın çizgi %35 maskesiyle silinir, kutu rakamlar');
+// yazı ile ALTINDAKİ ölçü çizgisi arasında 5 satır boşluk (maskelenmemiş): birleşmemeli — kutu yazı kalır
+const g6 = new Uint8Array(W * H).fill(255); const boya6 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g6[y * W + x] = 0; };
+boya6(150, 100, 168, 124); boya6(172, 100, 190, 124); boya6(120, 129, 175, 131);      // kısa çizgi (pencerenin %30'u → maskelenmez), 5 satır altta
+kutu = F.aiYaziKutusu(g6, W, H, 168, 112, 90, 2);
+assert.deepStrictEqual(kutu, { x: 150, y: 100, width: 40, height: 24 }, 'alttaki kısa çizgi birleşmemeli: ' + JSON.stringify(kutu));
+// GENİŞ FONT (MAN 6984 "270": 35 px yüksek, rakam arası 14 px): üç rakam TEK kutu olmalı, tek rakama bölünmemeli
+const g4 = new Uint8Array(W * H).fill(255); const boya4 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g4[y * W + x] = 0; };
+boya4(100, 60, 124, 95); boya4(138, 60, 162, 95); boya4(176, 60, 200, 95);
+kutu = F.aiYaziKutusu(g4, W, H, 150, 78, 90, 3);
+assert.deepStrictEqual(kutu, { x: 100, y: 60, width: 100, height: 35 }, 'geniş font 3 rakam tek kutu: ' + JSON.stringify(kutu));
+// dikey yazı + sağında bitişik kalın çizgi parçası (esikSut ile boşluk sayılır): kutu dikey yazı kalır
+const g5 = new Uint8Array(W * H).fill(255); const boya5 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g5[y * W + x] = 0; };
+boya5(300, 40, 312, 80); boya5(314, 40, 360, 44);
+kutu = F.aiYaziKutusu(g5, W, H, 306, 60, 90, 3);
+assert(kutu && kutu.x === 300 && kutu.width === 12, 'dikey yazı + çizgi parçası: ' + JSON.stringify(kutu));
+// dikey yazı + hemen yanından geçen dikey ölçü çizgisi (pencerede tek dev blok olmamalı)
+boya(320, 0, 322, H); kutu = F.aiYaziKutusu(g, W, H, 306, 60);
+assert.deepStrictEqual(kutu, { x: 300, y: 40, width: 12, height: 40 }, 'dikey yazı + dikey çizgi: ' + JSON.stringify(kutu));
+
+// 6) kablolama + güvenlik
+assert(html.includes('id="autoBalloonBtn"') && html.includes('<script src="ai-balloon.js"></script>'), 'düğme/script yok');
+assert(html.indexOf('<script src="app.js"></script>') < html.indexOf('<script src="ai-balloon.js"></script>'), 'ai-balloon.js app.js\'den sonra yüklenmeli');
+assert(api.includes('id="geminiKey"') && api.includes("localStorage.setItem('ocr_gemini_key'") && api.includes("localStorage.getItem('ocr_gemini_key')"), 'API sayfası Gemini kartı');
+assert(!/AIza[0-9A-Za-z_-]{20,}/.test(js + html + api), 'kaynakta API anahtarı olmamalı');
+assert(js.includes('responseMimeType') && js.includes("'gemini-3.5-flash-lite'") && js.includes('ÖLÇÜLER 90 DERECE'), 'istem/model');
+assert(js.includes('autoAlignBalloons()') && js.includes('addTableRow(ann)') && js.includes('applyDefaultTolerances(ann)'), 'balon + tablo + hizalama akışı');
+console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');

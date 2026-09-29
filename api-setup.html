@@ -262,6 +262,35 @@
             </div>
         </div>
         
+        <!-- Gemini — Otomatik Balonlama -->
+        <div class="api-card" id="geminiCard">
+            <h2>
+                🤖 Gemini (Otomatik Balonlama)
+                <span class="status-badge inactive" id="geminiStatus">Devre Dışı</span>
+            </h2>
+            <div class="checkbox-group">
+                <input type="checkbox" id="geminiEnabled">
+                <label for="geminiEnabled">Bu servisi kullan</label>
+            </div>
+            <div class="form-group">
+                <label for="geminiKey">API Anahtarı:</label>
+                <input type="password" id="geminiKey" placeholder="Google AI Studio Gemini API anahtarı">
+                <p class="help-text">"🤖 Otomatik Balonla" düğmesi çizimin tamamındaki ölçüleri bu modelle bulur. Anahtar yalnız bu tarayıcıda saklanır.</p>
+            </div>
+            <div class="form-group">
+                <label for="geminiModel">Model (boş = gemini-3.5-flash-lite; kota dolunca yedeklere geçer):</label>
+                <input type="text" id="geminiModel" placeholder="gemini-3.5-flash-lite">
+            </div>
+            <div class="info-box">
+                <h4>📝 Nasıl API Anahtarı Alınır?</h4>
+                <ul>
+                    <li>1. <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>'ya girin</li>
+                    <li>2. "Create API key" ile anahtar oluşturun</li>
+                    <li>3. Anahtarı yukarıya yapıştırıp Kaydet'e basın</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- Google Cloud Vision -->
         <div class="api-card" id="googleCard">
             <h2>
@@ -337,6 +366,13 @@
         window.addEventListener('DOMContentLoaded', loadSettings);
         
         function loadSettings() {
+            // Gemini (otomatik balonlama)
+            const geminiEnabled = localStorage.getItem('ocr_gemini_enabled') === 'true';
+            document.getElementById('geminiEnabled').checked = geminiEnabled;
+            document.getElementById('geminiKey').value = localStorage.getItem('ocr_gemini_key') || '';
+            document.getElementById('geminiModel').value = localStorage.getItem('ocr_gemini_model') || '';
+            updateStatus('gemini', geminiEnabled);
+
             // OCR.space
             const ocrspaceEnabled = localStorage.getItem('ocr_ocrspace_enabled') === 'true';
             const ocrspaceKey = localStorage.getItem('ocr_ocrspace_key') || '';
@@ -365,6 +401,11 @@
         }
         
         function saveSettings() {
+            // Gemini (otomatik balonlama)
+            localStorage.setItem('ocr_gemini_enabled', document.getElementById('geminiEnabled').checked);
+            localStorage.setItem('ocr_gemini_key', document.getElementById('geminiKey').value.trim());
+            localStorage.setItem('ocr_gemini_model', document.getElementById('geminiModel').value.trim());
+
             // OCR.space
             localStorage.setItem('ocr_ocrspace_enabled', document.getElementById('ocrspaceEnabled').checked);
             localStorage.setItem('ocr_ocrspace_key', document.getElementById('ocrspaceKey').value);

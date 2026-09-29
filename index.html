@@ -57,6 +57,7 @@
                     </label>
                     <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,image/tiff" style="display: none;" />
                     <a href="api-setup.html" class="btn btn-warning" style="text-decoration: none; padding: 8px 16px; font-size: 13px;" target="_blank">⚙️ API</a>
+                    <button id="autoBalloonBtn" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px;" title="Gemini görme modeli ile ölçüleri bulup balonlar, sonra hizalar (manuel balonlama aynen kullanılabilir)">🤖 Otomatik Balonla</button>
                     <button id="autoAlignBtn" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">🎯 Hizala</button>
                     <button id="addTextBtn" class="btn btn-info" style="padding: 8px 16px; font-size: 13px;">📝 Metin</button>
                     <button id="addLineBtn" class="btn btn-success" style="padding: 8px 16px; font-size: 13px;">📍 Çizgi</button>
@@ -385,5 +386,6 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <script src="app.js"></script>
+    <script src="ai-balloon.js"></script>
 </body>
 </html>
