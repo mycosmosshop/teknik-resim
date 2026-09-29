@@ -128,8 +128,8 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert(f(1000, 0) > 0.85 && f(-1000, 0) < 1.17, 'tek event siniri'); assert(Math.abs(f(4, 0) - 0.99) < 0.01, 'kucuk hareket kucuk adim'); }
 // 9) kolaj dogrulama: beklenen/okunan eslesmesi (sayi kismi; R/± onekleri atilir; kisa onek kabul) + kolaj yerlesimi
 assert(F.aiDogrulaEslesir('R 50','R50') && F.aiDogrulaEslesir('80 ±20','80') && F.aiDogrulaEslesir('40','±40') && F.aiDogrulaEslesir('12,5','12.5'), 'eslesmeli');
-assert(!F.aiDogrulaEslesir('15','R10') && !F.aiDogrulaEslesir('21','15.1') && !F.aiDogrulaEslesir('0.1','') && !F.aiDogrulaEslesir('15','1'), 'eslesmemeli (yanlis kutu / bos)');
-{ const L = F.aiKolajYerlesim(12); assert(L.W === 1200 && L.H === 420 && L.hucre.length === 12 && L.hucre[7].x === 480 && L.hucre[7].y === 140); }
+assert(!F.aiDogrulaEslesir('15','R10') && !F.aiDogrulaEslesir('21','15.1') && !F.aiDogrulaEslesir('0.1','') && F.aiDogrulaEslesir('0.1','0.') && F.aiDogrulaEslesir('15','1'), 'eslesmemeli (yanlis kutu / bos); kesik okuma (onek) kabul');
+{ const L = F.aiKolajYerlesim(12); assert(L.W === 1200 && L.H === 540 && L.hucre.length === 12 && L.hucre[7].x === 900 && L.hucre[7].y === 180); }
 assert(js.includes('aiKolajDogrula(kaynak, dogrulanacak') && js.includes('ELENEN: '), 'dogrulama akisa bagli degil');
 // 10) Sıfırla düğmesi: Fit yanında, clearAll'a bağlı; clearAll onay sorar, fileName yoksa hata vermez, PDF sayfasını bırakır
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8');

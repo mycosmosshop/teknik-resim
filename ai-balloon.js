@@ -304,9 +304,10 @@ function aiDogrulaEslesir(beklenen, okunan) {
     const n = s => { const m = /[0-9]+(?:[.,][0-9]+)?/.exec(String(s || '')); return m ? m[0].replace(',', '.') : ''; };   // ilk sayı grubu ("80 ±20" → 80)
     const a = n(beklenen), b = n(okunan);
     if (!a || !b) return false;
-    return a === b || (b.length >= 2 && a.startsWith(b));
+    // önek kabul: eğik/küçük yazıda model bazen "0.1"i "0." diye kesik okuyor (ölçüldü) — yanlış kutuda bambaşka sayı çıkar
+    return a === b || a.startsWith(b);
 }
-function aiKolajYerlesim(n, HW = 240, HH = 140, COLS = 5) {
+function aiKolajYerlesim(n, HW = 300, HH = 180, COLS = 4) {   // hücre büyütüldü: eğik küçük "0.1" 240×140'ta kesik okunuyordu
     const rows = Math.ceil(n / COLS);
     return { W: COLS * HW, H: rows * HH, hucre: Array.from({ length: n }, (_, i) => ({ x: (i % COLS) * HW, y: Math.floor(i / COLS) * HH, w: HW, h: HH })) };
 }
@@ -319,7 +320,7 @@ async function aiKolajDogrula(kaynak, adaylar, ayar, ilerleme) {
         g.fillStyle = '#fff'; g.fillRect(0, 0, L.W, L.H); g.strokeStyle = '#888'; g.fillStyle = '#000'; g.font = 'bold 14px Arial';
         grup.forEach(({ k }, i) => {
             const h = L.hucre[i], pad = 6, sx = Math.max(0, k.x - pad), sy = Math.max(0, k.y - pad), sw = k.width + 2 * pad, sh = k.height + 2 * pad;
-            const s = Math.min(3, (h.w - 30) / sw, (h.h - 30) / sh), dw = Math.max(1, sw * s), dh = Math.max(1, sh * s);
+            const s = Math.min(4, (h.w - 30) / sw, (h.h - 30) / sh), dw = Math.max(1, sw * s), dh = Math.max(1, sh * s);
             g.drawImage(kaynak, sx, sy, sw, sh, h.x + (h.w - dw) / 2, h.y + (h.h - dh) / 2, dw, dh);
             g.strokeRect(h.x + 0.5, h.y + 0.5, h.w - 1, h.h - 1); g.fillText(String(i), h.x + 4, h.y + 16);
         });
