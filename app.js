@@ -636,6 +636,7 @@ async function loadPDF(file) {
         try {
             const pdf = await pdfjsLib.getDocument(typedArray).promise;
             const page = await pdf.getPage(1);
+            window.__aiPdfPage = page;   // Otomatik Balonla (ai-balloon.js) sayfayı YÜKSEK çözünürlükte yeniden çizer — küçük yazılar için
             
             // Maksimum boyut sınırları
             const maxWidth = 4000;

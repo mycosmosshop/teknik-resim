@@ -9,7 +9,18 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+
+// 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
+const tk = F.aiTumKareler(3318, 2342);
+assert.strictEqual(tk.length, 30, 'toplam kare: ' + tk.length); assert.strictEqual(tk.filter(k => k.olcek === 2).length, 24);
+assert.deepStrictEqual(F.AI_BALON.GECISLER.map(g => g.kare), [1400, 700]);
+// büyük (≥14 MP) görüntüde yalnız 1400 geçişi: 6000×4238 → 5×4 = 20 kare, olcek 2 yok
+const tb = F.aiTumKareler(6000, 4238);
+assert.strictEqual(tb.length, 20, 'büyük görüntü kare: ' + tb.length); assert(tb.every(k => k.olcek === 1));
+// okuma kaynağı canvas değil: PDF sayfası yeniden çizilir / görüntünün doğal boyutu; app.js sayfayı saklar
+assert(js.includes('window.__aiPdfPage') && js.includes('naturalWidth') && js.includes('aiPencereKutusu(kaynak, KW, KH'), 'yüksek çözünürlük kaynağı');
+assert(fs.readFileSync(__dirname + '/app.js', 'utf8').includes('window.__aiPdfPage = page;'), 'loadPDF sayfayı saklamalı');
 
 // 1) kareler: 3318×2342 → x: 0,1200,2400 · y: 0,1200 = 6 kare; kenar artığı < 200 px atlanır
 let k = F.aiKareler(3318, 2342);
@@ -18,8 +29,8 @@ assert.deepStrictEqual(k[5], { x0: 2400, y0: 1200, x1: 3318, y1: 2342 });
 assert.strictEqual(F.aiKareler(1450, 1000).length, 2, '1450 px: ikinci kare 250 px → dahil'); assert.strictEqual(F.aiKareler(1350, 1000).length, 1, '1350 px: ikinci kare 150 px → atlanır');
 
 // 2) normalize → global; tolerans metni ("+0.2") ve dışarı taşan atılır
-const c = F.aiKareCoz([{ deger: '48', x: 500, y: 250 }, { deger: '+0.2', x: 1, y: 1 }, { deger: 'R15', x: 999, y: 999 }, { deger: '', x: 1, y: 1 }], { x0: 1200, y0: 0, x1: 2600, y1: 1400 }, 3318, 2342);
-assert.strictEqual(c.length, 2); assert.strictEqual(c[0].x, 1200 + 700); assert.strictEqual(c[0].y, 350); assert.strictEqual(c[1].deger, 'R15');
+const c = F.aiKareCoz([{ deger: '48', x: 500, y: 250 }, { deger: '+0.2', x: 1, y: 1 }, { deger: 'R 15', x: 999, y: 999 }, { deger: '', x: 1, y: 1 }, { deger: '±20', x: 5, y: 5 }], { x0: 1200, y0: 0, x1: 2600, y1: 1400 }, 3318, 2342);
+assert.strictEqual(c.length, 2, '±20 ve +0.2 tolerans metni atılmalı'); assert.strictEqual(c[0].x, 1200 + 700); assert.strictEqual(c[0].y, 350); assert.strictEqual(c[1].deger, 'R15', '"R 15" → "R15"');
 
 // 3) tekilleştirme: örtüşen karelerden aynı ölçü 90 px içinde tek
 const t = F.aiTekille([{ deger: '48', x: 100, y: 100 }, { deger: '48', x: 150, y: 120 }, { deger: '48', x: 400, y: 100 }, { deger: '50', x: 150, y: 120 }]);
