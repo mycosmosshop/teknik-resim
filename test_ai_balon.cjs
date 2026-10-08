@@ -9,7 +9,7 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiCerceveDisi, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiCerceveDisi, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn, aiMetinGruplari, aiOlcuMetniMi, aiSor};')(sandbox.localStorage, sandbox.document);
 
 // 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
 const tk = F.aiTumKareler(3318, 2342);
@@ -128,6 +128,8 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert(f(1000, 0) > 0.85 && f(-1000, 0) < 1.17, 'tek event siniri'); assert(Math.abs(f(4, 0) - 0.99) < 0.01, 'kucuk hareket kucuk adim'); }
 // 9) kolaj dogrulama: beklenen/okunan eslesmesi (sayi kismi; R/± onekleri atilir; kisa onek kabul) + kolaj yerlesimi
 assert(F.aiDogrulaEslesir('R 50','R50') && F.aiDogrulaEslesir('80 ±20','80') && F.aiDogrulaEslesir('40','±40') && F.aiDogrulaEslesir('12,5','12.5'), 'eslesmeli');
+// kutu yalnız toleransı / adet önekinden sonrasını sardı: okuma doğru, elenmemeli (sentetik sınav); yanlış kutu yine elenir
+assert(F.aiDogrulaEslesir('3x ø6','ø6') && F.aiDogrulaEslesir('50 ±0.5','±0.5') && !F.aiDogrulaEslesir('2','±0.2') && !F.aiDogrulaEslesir('38','30'), 'adet öneki / tolerans kutusu');
 assert(!F.aiDogrulaEslesir('15','R10') && !F.aiDogrulaEslesir('21','15.1') && !F.aiDogrulaEslesir('0.1','') && F.aiDogrulaEslesir('0.1','0.') && F.aiDogrulaEslesir('15','1') && F.aiDogrulaEslesir('417','17'), 'eslesmemeli (yanlis kutu / bos); kesik okuma (onek) kabul');
 { const L = F.aiKolajYerlesim(12); assert(L.W === 1200 && L.H === 540 && L.hucre.length === 12 && L.hucre[7].x === 900 && L.hucre[7].y === 180); }
 assert(js.includes('aiKolajDogrula(kaynak, dogrulanacak') && js.includes('ELENEN: '), 'dogrulama akisa bagli degil');
@@ -137,4 +139,54 @@ assert(js.includes('aiKolajDogrula(kaynak, dogrulanacak') && js.includes('ELENEN
   assert(app.includes("resetAllBtn.addEventListener('click', clearAll)"), "düğme clearAll'a bağlı değil");
   const i = app.indexOf('function clearAll()'); const g = app.slice(i, app.indexOf(String.fromCharCode(10) + '}', i));
   assert(g.includes("confirm('TÜM VERİLERİ") && g.includes("if (fn) fn.textContent") && g.includes('window.__aiPdfPage = null') && g.includes('lines = []'), 'clearAll: onay / fileName güvenliği / PDF ve çizgi sıfırlama'); }
-console.log('✔ ai-balloon: kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama — tüm kontroller geçti');
+// GÜVENLİK AĞI — yazı grupları: "12.5" (nokta silinince 0,46h boşluk) TEK grup; 1,55h altındaki satır AYRI grup;
+//   üstünde ölçü çizgisi olan grup cz > 0, çizgiden 2h'ten uzak (not) grup cz = 0; ok ucu gibi ince tek parça grup değil
+{ const W = 400, H = 300, g = new Uint8Array(W * H).fill(255), h = 26;
+  const kutu = (x, y, w, hh, t = 3) => { for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) if (xx < x + t || xx >= x + w - t || yy < y + t || yy >= y + hh - t) g[yy * W + xx] = 0; };
+  const dolu = (x, y, w, hh) => { for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) g[yy * W + xx] = 0; };
+  kutu(100, 100, 16, 26); kutu(120, 100, 16, 26); kutu(148, 100, 16, 26);        // "12" + "5" (arada nokta yeri)
+  kutu(100, 140, 16, 26); kutu(120, 140, 16, 26);                                // alt satır (merkezler 40 px = 1,55h)
+  kutu(100, 240, 16, 26); kutu(120, 240, 16, 26);                                // çizgiden uzak satır (not)
+  dolu(60, 88, 200, 2);                                                          // üst satırın üstündeki ölçü çizgisi
+  dolu(300, 200, 22, 5);                                                         // ok ucu benzeri ince parça
+  const gr = F.aiMetinGruplari(g, W, H, { x0: 0, y0: 0, x1: W, y1: H }, h).sort((a, b) => a.y - b.y);
+  assert.strictEqual(gr.length, 3, 'grup sayısı: ' + JSON.stringify(gr));
+  assert.strictEqual(gr[0].n, 3, '"12.5" tek grup olmalı'); assert.strictEqual(gr[1].n, 2, 'alt satır ayrı grup');
+  assert(gr[0].cz > 0 && gr[2].cz === 0, 'çizgi yakınlığı: ' + gr.map(x => x.cz));
+  // delik / yazı ayrımı (iç boşluk sayısı): eksen artılı delik çemberi yazı DEĞİL; birbirine değen iki rakam (kareye yakın
+  //   tek parça, "34") yazıdır — eskiden "kare + iri" ölçütüyle delik sanılıp atılıyordu
+  { const W2 = 200, H2 = 120, g2 = new Uint8Array(W2 * H2).fill(255), set = (x, y) => { g2[y * W2 + x] = 0; };
+    for (let a = 0; a < 720; a++) { const t = a * Math.PI / 360; for (const r of [11, 12]) set(Math.round(50 + r * Math.cos(t)), Math.round(50 + r * Math.sin(t))); }
+    for (let i = -15; i <= 15; i++) { set(50 + i, 50); set(50, 50 + i); }                                   // eksen artısı
+    const kt = (x, y, w, hh) => { for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) if (xx < x + 3 || xx >= x + w - 3 || yy < y + 3 || yy >= y + hh - 3) set(xx, yy); };
+    kt(120, 40, 12, 26); kt(131, 40, 12, 26);                                                               // değen iki "rakam" (23×26)
+    const gg = F.aiMetinGruplari(g2, W2, H2, { x0: 0, y0: 0, x1: W2, y1: H2 }, 26);
+    assert(!gg.some(g => g.cx < 80), 'artılı delik yazı sayılmamalı: ' + JSON.stringify(gg));
+    assert(gg.some(g => g.cx > 110 && g.cx < 150), 'değen iki rakam yazı sayılmalı: ' + JSON.stringify(gg)); }
+  // okunan metin ölçü mü
+  for (const s of ['48', '0.1', 'R5', 'ø8', '4x ø11', 'M8x1.25', '1×45°', '80 ±20', '27 +0.2/-0.1', 'Ø60 H7', '12,5']) assert(F.aiOlcuMetniMi(s), 'ölçü sayılmalı: ' + s);
+  for (const s of ['VW 10500', '2:1', 'A3', '63g', '0', '', 'Folie', '(420']) assert(!F.aiOlcuMetniMi(s), 'ölçü sayılmamalı: ' + s);
+  assert(js.includes('aiGuvenlikAgi(kaynak, KW, KH, kutular, mevcut') && js.includes('kutular.push(...ag.yeni)'), 'güvenlik ağı ana akışa bağlı değil'); }
+// güvenlik ağı TÜM sayfayı tarar (yakınlık şartı görünüşü komple kaçırıyordu); doğrulanamayan okuma TURUNCU işaretlenir, sessizce kabul edilmez
+{ const ag = js.slice(js.indexOf('async function aiGuvenlikAgi('), js.indexOf('function aiDurum('));
+  assert(!/yakin\(g, x\.k\)/.test(ag) && ag.includes('const b = { x0: 0, y0: 0, x1: KW, y1: KH }'), 'güvenlik ağı tüm sayfayı taramalı');
+  assert(ag.includes('if (g.n > karakter(x.o.deger)) tekrar.push'), 'tolerans yeniden okuması karakter sayısına bağlı olmalı');
+  assert(ag.includes("if (!teyit.has(x)) x.o.kontrol = true") && js.includes("if (!okunan.has(x)) x.o = { ...x.o, kontrol: true }") && js.includes("o.kontrol ? '#e67e22'"), 'doğrulanamayan okuma turuncu olmalı'); }
+// aiSor: ilk model 429 (kota) → yedek modele geçer ve sonraki çağrılar da yedekte kalır; 403 fırlatılır (sessiz geçilmez)
+(async () => {
+  const istek = []; let kod = 429;
+  globalThis.fetch = async (u, o) => { const m = (/models\/([^:]+):/.exec(u) || [])[1]; istek.push(m);   // ERP: model adreste (doğrudan Gemini)
+    if (m === F.AI_BALON.MODELLER[0] && kod === 429) return { ok: false, status: 429, text: async () => 'quota' };
+    if (kod === 403) return { ok: false, status: 403, text: async () => 'yetki' };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '[]' }] } }] }) }; };
+  const ayar = { model: F.AI_BALON.MODELLER[0], key: 'x' }; F.AI_BALON.mi = 0;
+  assert.strictEqual(await F.aiSor('b64', ayar, 'i'), '[]'); assert.deepStrictEqual(istek, F.AI_BALON.MODELLER.slice(0, 2), 'yedek modele geçmeli: ' + istek);
+  istek.length = 0; await F.aiSor('b64', ayar, 'i'); assert.deepStrictEqual(istek, [F.AI_BALON.MODELLER[1]], 'sonraki çağrı yedekte kalmalı');
+  kod = 403; await assert.rejects(() => F.aiSor('b64', ayar, 'i'), e => e.status === 403);
+  // son model de GÜNLÜK kotada → saatlerce beklemeden kota hatası (ücretsiz katman 500/gün; ekran takılmış görünüyordu)
+  F.AI_BALON.mi = F.AI_BALON.MODELLER.length - 1; const t0 = Date.now();
+  globalThis.fetch = async () => ({ ok: false, status: 429, text: async () => '{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","retryDelay":"10957s"}' });
+  await assert.rejects(() => F.aiSor('b64', ayar, 'i'), e => e.kota === true); assert(Date.now() - t0 < 1000, 'günlük kotada beklememeli');
+  console.log('✔ ai-balloon (ERP): kare/koordinat/tekil/JSON/mürekkep kutusu/kablolama/güvenlik ağı/yedek model — tüm kontroller geçti');
+})().catch(e => { console.error(e); process.exit(1); });
+

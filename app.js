@@ -3173,8 +3173,22 @@ function applyAutoNumbering() {
 // ═══════════════════════════════════════════════════════════
 
 // Varsayılan toleransları uygula (DIN ISO 2768)
+
+// Ölçü metninden nominal sayı: "Ø160"→160, "R8"→8, "6× Ø11"→11, "40 ±0.1"→40, "Ø90 g6"→90, "1×45°"→1, "21,9"→21.9; yoksa NaN
+function nominalDeger(str) {
+    let s = String(str || '').replace(',', '.').split('±')[0];
+    if (!/°/.test(s)) s = s.replace(/^\s*\d+\s*[x×]\s*/i, '');          // adet öneki: "6× Ø11" → "Ø11" (pahta "1×45°" nominal 1 kalır)
+    s = s.replace(/[ØøΦφ⌀]|\b[RrMm](?=\d)/g, ' ');
+    const m = /-?\d+(?:\.\d+)?/.exec(s);
+    return m ? parseFloat(m[0]) : NaN;
+}
+// Ölçü metninde yazılı simetrik tolerans ("40 ±0.1" → "0,1"); yoksa null
+function yaziliTolerans(str) { const m = /±\s*(\d+(?:[.,]\d+)?)/.exec(String(str || '')); return m ? m[1].replace('.', ',') : null; }
+
 function applyDefaultTolerances(annotation) {
     if (!annotation.dimension) return;
+    const yazili = yaziliTolerans(annotation.dimension);
+    if (yazili) { annotation.lowerTolerance = '-' + yazili; annotation.upperTolerance = '+' + yazili; return; }
     
     // Manuel tolerans varsa kullan
     const lowerInput = document.getElementById('defaultLowerTolerance');
@@ -3188,7 +3202,9 @@ function applyDefaultTolerances(annotation) {
     }
     
     // Manuel yoksa tablodan otomatik uygula (seçili sınıfa göre)
-    const dimension = parseFloat(annotation.dimension.replace(',', '.'));
+    const dimension = nominalDeger(annotation.dimension);
+    // ISO 2768: 0,5 mm altı (ör. geometrik tolerans değeri 0,05) ve pürüzlülük (Ra/Rz = üst sınır) için genel tolerans yoktur
+    if (/^\s*R[az]\s*\d/i.test(annotation.dimension) || dimension < 0.5) { annotation.lowerTolerance = ''; annotation.upperTolerance = ''; return; }
     if (!isNaN(dimension)) {
         for (let range of toleranceRanges) {
             if (dimension >= range.start && dimension < range.end) {
@@ -3281,7 +3297,7 @@ function clearAllTolerances() {
 
 // Alt limit hesapla
 function calculateLowerLimit(annotation) {
-    const dimension = parseFloat(annotation.dimension.replace(',', '.'));
+    const dimension = nominalDeger(annotation.dimension);
     const tolerance = parseFloat((annotation.lowerTolerance || '0').replace(',', '.'));
     
     if (isNaN(dimension)) return '-';
@@ -3292,7 +3308,7 @@ function calculateLowerLimit(annotation) {
 
 // Üst limit hesapla
 function calculateUpperLimit(annotation) {
-    const dimension = parseFloat(annotation.dimension.replace(',', '.'));
+    const dimension = nominalDeger(annotation.dimension);
     const tolerance = parseFloat((annotation.upperTolerance || '0').replace(',', '.'));
     
     if (isNaN(dimension)) return '-';
@@ -3373,8 +3389,8 @@ function sortTable(column) {
             valueB = parseInt(b.number) || 0;
         } else if (column === 'dimension') {
             // Ölçü değerini sayıya çevir (virgül ve nokta desteği)
-            valueA = parseFloat((a.dimension || '0').replace(',', '.')) || 0;
-            valueB = parseFloat((b.dimension || '0').replace(',', '.')) || 0;
+            valueA = nominalDeger(a.dimension) || 0;
+            valueB = nominalDeger(b.dimension) || 0;
         }
         
         if (sortState.ascending) {
@@ -4209,7 +4225,7 @@ function exportToExcel() {
         let upperLimit = '';
         
         if (dimension && lower && upper) {
-            const dimNum = parseNumber(dimension);
+            const dimNum = nominalDeger(dimension);
             const lowerNum = parseNumber(lower);
             const upperNum = parseNumber(upper);
             
@@ -4287,7 +4303,7 @@ function saveToleranceRanges() {
 
 // Ölçüye göre tolerans bul
 function getToleranceForDimension(dimension) {
-    const dim = parseFloat(dimension.toString().replace(',', '.'));
+    const dim = nominalDeger(dimension);
     
     if (isNaN(dim)) {
         return { lower: 0, upper: 0 };
@@ -4665,7 +4681,9 @@ function renumberAnnotations() {
     // 1. Önce yukarıdan aşağıya (Y ekseni)
     // 2. Aynı seviyede ise soldan sağa (X ekseni)
     // 3. Tolerans: 30px (daha hassas)
-    annotations.sort((a, b) => {
+    if (balonlarHizali()) {
+        balonSaatYonuSirala(annotations).forEach((x, i) => { annotations[i] = x; });
+    } else annotations.sort((a, b) => {
         // Balon pozisyonlarını kullan (ölçü dikdörtgeni değil!)
         const aBalloonY = a.balloon ? a.balloon.y : (a.rect.y + a.rect.height / 2);
         const bBalloonY = b.balloon ? b.balloon.y : (b.rect.y + b.rect.height / 2);
@@ -4697,196 +4715,74 @@ function renumberAnnotations() {
     console.log(`✅ Balonlar yeniden numaralandı (${startNumber}-${maxNumber})`);
 }
 
-// Otomatik Balon Hizalama - Ölçülerin Dış Sınırlarına Göre
+// Otomatik Balon Hizalama — balonlar ölçülerin dış çerçevesinin dört kenarına dizilir.
+//   Eski sürümde numaralama YERLEŞİMDEN ÖNCE (eski balon konumlarına göre) yapılıyordu → hizalı balonların numaraları
+//   karışık çıkıyordu (12 8 13 4 …); aynı kenarda balonlar tek yönlü itildiği için ölçü sırasıyla uyuşmuyor, oklar kesişiyordu.
+//   Şimdi: (1) her ölçü en yakın kenara; (2) kenarda ölçü sırasına göre dizilip en az kaydırmayla aralanır;
+//   (3) numaralar saat yönünde: üst soldan sağa, sağ yukarıdan aşağı, alt sağdan sola, sol aşağıdan yukarı.
+function balonYay(g, aralik) {        // g: [{p}] sıralı istenen konumlar → o.q: çakışmasız, sırası korunmuş, kayma karesi en az
+    const kum = [];
+    for (const o of g) {
+        kum.push({ og: [o], bas: o.p });
+        while (kum.length > 1) {
+            const b = kum[kum.length - 1], a = kum[kum.length - 2];
+            if (a.bas + a.og.length * aralik <= b.bas) break;
+            const og = a.og.concat(b.og);
+            kum.splice(-2, 2, { og, bas: og.reduce((s, x, j) => s + x.p - j * aralik, 0) / og.length });
+        }
+    }
+    kum.forEach(c => c.og.forEach((o, j) => { o.q = c.bas + j * aralik; }));
+}
+function balonBaslangicNo() {
+    const inp = document.getElementById('startNumberInput'), v = inp ? parseInt(inp.value) : NaN;
+    const enKucuk = annotations.length ? Math.min(...annotations.map(a => a.number)) : 1;
+    return v && v < enKucuk ? v : (isFinite(enKucuk) ? enKucuk : 1);
+}
+// Saat yönü sırası: ölçülerin merkezinden balona açı, sol üst köşeden başlar (dikdörtgen çevresinde açı tekdüze artar)
+function balonSaatYonuSirala(liste) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    liste.forEach(a => { x0 = Math.min(x0, a.rect.x); x1 = Math.max(x1, a.rect.x + a.rect.width); y0 = Math.min(y0, a.rect.y); y1 = Math.max(y1, a.rect.y + a.rect.height); });
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bas = Math.atan2(y0 - cy, x0 - cx);
+    const aci = a => { let t = Math.atan2(a.balloon.y - cy, a.balloon.x - cx) - bas; while (t < 0) t += 2 * Math.PI; return t; };
+    return liste.slice().sort((a, b) => aci(a) - aci(b));
+}
+function balonlarHizali() {             // tüm balonlar dört hizalama çizgisinden birinde mi (Hizala sonrası)
+    if (!annotations.length || annotations.some(a => !a.balloon)) return false;
+    const xs = annotations.map(a => a.balloon.x), ys = annotations.map(a => a.balloon.y);
+    const mnx = Math.min(...xs), mxx = Math.max(...xs), mny = Math.min(...ys), mxy = Math.max(...ys), t = 1.5;
+    return annotations.every(a => Math.abs(a.balloon.x - mnx) < t || Math.abs(a.balloon.x - mxx) < t || Math.abs(a.balloon.y - mny) < t || Math.abs(a.balloon.y - mxy) < t);
+}
+
 function autoAlignBalloons() {
     if (annotations.length === 0) {
         alert('Hizalanacak balon yok!');
         return;
     }
-    
-    // ÖNEMLİ: Numaraları yeniden sırala (sol üstten başlayarak)
-    renumberAnnotations();
-    
-    const offset = 40; // Ölçülerden dışarıya mesafe
-    const balloonRadius = 15;
-    
-    // Tüm dikdörtgenlerin dış sınırlarını bul
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    
-    annotations.forEach(annotation => {
-        const rect = annotation.rect;
-        minX = Math.min(minX, rect.x);
-        maxX = Math.max(maxX, rect.x + rect.width);
-        minY = Math.min(minY, rect.y);
-        maxY = Math.max(maxY, rect.y + rect.height);
+    const offset = 40;                                                    // ölçülerden dışarıya mesafe
+    const r = Math.max(...annotations.map(a => a.balloonSize || 20));
+    const aralik = 2 * r + 6;                                             // komşu balonlar arası merkez mesafesi
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    annotations.forEach(a => { minX = Math.min(minX, a.rect.x); maxX = Math.max(maxX, a.rect.x + a.rect.width); minY = Math.min(minY, a.rect.y); maxY = Math.max(maxY, a.rect.y + a.rect.height); });
+    const sol = minX - offset, sag = maxX + offset, ust = minY - offset, alt = maxY + offset;
+    const kenar = { u: [], d: [], a: [], s: [] };
+    annotations.forEach(a => {
+        const cx = a.rect.x + a.rect.width / 2, cy = a.rect.y + a.rect.height / 2;
+        const k = [[cy - ust, 'u'], [sag - cx, 'd'], [alt - cy, 'a'], [cx - sol, 's']].sort((p, q) => p[0] - q[0])[0][1];
+        kenar[k].push({ a, p: (k === 'u' || k === 'a') ? cx : cy });
     });
-    
-    // Hizalama çizgileri (ölçülerin DIŞINDA)
-    const leftLineX = minX - offset;
-    const rightLineX = maxX + offset;
-    const topLineY = minY - offset;
-    const bottomLineY = maxY + offset;
-    
-    // Her balonu KENDİ ÖLÇÜsüne en yakın kenara yerleştir
-    annotations.forEach(annotation => {
-        const rect = annotation.rect;
-        const rectCenterX = rect.x + rect.width / 2;
-        const rectCenterY = rect.y + rect.height / 2;
-        
-        // Bu ölçünün kenarlarından hizalama çizgilerine olan mesafeler
-        const distToLeft = rectCenterX - leftLineX;
-        const distToRight = rightLineX - rectCenterX;
-        const distToTop = rectCenterY - topLineY;
-        const distToBottom = bottomLineY - rectCenterY;
-        
-        // En yakın kenarı bul
-        const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-        
-        let balloonX, balloonY;
-        
-        if (minDist === distToLeft) {
-            // Sol kenara hizala
-            balloonX = leftLineX;
-            balloonY = rectCenterY;
-        } else if (minDist === distToRight) {
-            // Sağ kenara hizala
-            balloonX = rightLineX;
-            balloonY = rectCenterY;
-        } else if (minDist === distToTop) {
-            // Üst kenara hizala
-            balloonX = rectCenterX;
-            balloonY = topLineY;
-        } else {
-            // Alt kenara hizala
-            balloonX = rectCenterX;
-            balloonY = bottomLineY;
-        }
-        
-        annotation.balloon = {
-            x: balloonX,
-            y: balloonY
-        };
-    });
-    
-    // Çakışmaları önle - aynı kenardaki balonları düzenle
-    adjustOverlappingBalloons();
-    
-    console.log('🎨 Canvas yeniden çiziliyor...');
-    
-    // Canvas'ı yeniden çiz - ZORUNLU refresh
+    for (const k of Object.keys(kenar)) {
+        const g = kenar[k].sort((p, q) => p.p - q.p);
+        balonYay(g, aralik);
+        g.forEach(o => { o.a.balloon = (k === 'u' || k === 'a') ? { x: o.q, y: k === 'u' ? ust : alt } : { x: k === 's' ? sol : sag, y: o.q }; });
+    }
+    const bas = balonBaslangicNo();
+    const sira = kenar.u.sort((p, q) => p.q - q.q).concat(kenar.d.sort((p, q) => p.q - q.q), kenar.a.sort((p, q) => q.q - p.q), kenar.s.sort((p, q) => q.q - p.q)).map(o => o.a);
+    sira.forEach((a, i) => { a.number = bas + i; });
+    annotations.sort((x, y) => x.number - y.number);
+    balloonCounter = bas + sira.length;
     redrawCanvas();
-    
-    // Tabloyu güncelle
     rebuildTable();
-    
-    console.log('✅ Balonlar hizalandı ve yeniden numaralandı');
-    console.log('📊 Güncel balon numaraları:', annotations.map(a => `${a.id}:${a.number}`).join(', '));
     showNotification('Balonlar hizalandı ve numaralandı!', 'success');
-}
-
-// Çakışan balonları düzenle
-function adjustOverlappingBalloons() {
-    const groups = {
-        left: [],
-        right: [],
-        top: [],
-        bottom: []
-    };
-    
-    // Tüm dikdörtgenlerin dış sınırlarını bul
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    
-    annotations.forEach(annotation => {
-        const rect = annotation.rect;
-        minX = Math.min(minX, rect.x);
-        maxX = Math.max(maxX, rect.x + rect.width);
-        minY = Math.min(minY, rect.y);
-        maxY = Math.max(maxY, rect.y + rect.height);
-    });
-    
-    const offset = 40;
-    const leftLineX = minX - offset;
-    const rightLineX = maxX + offset;
-    const topLineY = minY - offset;
-    const bottomLineY = maxY + offset;
-    
-    // Balonları grupla
-    annotations.forEach(annotation => {
-        if (!annotation.balloon) return;
-        
-        const threshold = 20;
-        
-        if (Math.abs(annotation.balloon.x - leftLineX) < threshold) {
-            groups.left.push(annotation);
-        } else if (Math.abs(annotation.balloon.x - rightLineX) < threshold) {
-            groups.right.push(annotation);
-        } else if (Math.abs(annotation.balloon.y - topLineY) < threshold) {
-            groups.top.push(annotation);
-        } else if (Math.abs(annotation.balloon.y - bottomLineY) < threshold) {
-            groups.bottom.push(annotation);
-        }
-    });
-    
-    // Her grubu sırala ve çakışmaları düzelt
-    const minSpacing = 35; // Minimum balon arası mesafe
-    
-    // Sol grup - yukarıdan aşağıya sırala
-    if (groups.left.length > 1) {
-        groups.left.sort((a, b) => a.balloon.y - b.balloon.y);
-        
-        for (let i = 1; i < groups.left.length; i++) {
-            const prev = groups.left[i - 1];
-            const curr = groups.left[i];
-            
-            if (curr.balloon.y - prev.balloon.y < minSpacing) {
-                curr.balloon.y = prev.balloon.y + minSpacing;
-            }
-        }
-    }
-    
-    // Sağ grup - yukarıdan aşağıya sırala
-    if (groups.right.length > 1) {
-        groups.right.sort((a, b) => a.balloon.y - b.balloon.y);
-        
-        for (let i = 1; i < groups.right.length; i++) {
-            const prev = groups.right[i - 1];
-            const curr = groups.right[i];
-            
-            if (curr.balloon.y - prev.balloon.y < minSpacing) {
-                curr.balloon.y = prev.balloon.y + minSpacing;
-            }
-        }
-    }
-    
-    // Üst grup - soldan sağa sırala
-    if (groups.top.length > 1) {
-        groups.top.sort((a, b) => a.balloon.x - b.balloon.x);
-        
-        for (let i = 1; i < groups.top.length; i++) {
-            const prev = groups.top[i - 1];
-            const curr = groups.top[i];
-            
-            if (curr.balloon.x - prev.balloon.x < minSpacing) {
-                curr.balloon.x = prev.balloon.x + minSpacing;
-            }
-        }
-    }
-    
-    // Alt grup - soldan sağa sırala
-    if (groups.bottom.length > 1) {
-        groups.bottom.sort((a, b) => a.balloon.x - b.balloon.x);
-        
-        for (let i = 1; i < groups.bottom.length; i++) {
-            const prev = groups.bottom[i - 1];
-            const curr = groups.bottom[i];
-            
-            if (curr.balloon.x - prev.balloon.x < minSpacing) {
-                curr.balloon.x = prev.balloon.x + minSpacing;
-            }
-        }
-    }
 }
 
 // Çoklu ölçü işleme - Her ölçü için ayrı kutu
