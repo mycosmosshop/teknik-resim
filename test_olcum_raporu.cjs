@@ -3,7 +3,7 @@
 const fs = require('fs'), assert = require('assert'), JSZip = require('jszip');
 const appKod = fs.readFileSync(__dirname + '/app.js', 'utf8'), nd = appKod.indexOf('function nominalDeger(');
 const F = new Function('document', 'localStorage', appKod.slice(nd, appKod.indexOf('\n}', nd) + 2) + '\n' + fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
-  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas};')({ addEventListener() { } }, {});
+  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas, orSurumDenetle};')({ addEventListener() { } }, {});
 
 // Biçim dönüşümleri örnek rapordaki görünümle aynı
 assert.strictEqual(F.orNominal('285'), 285); assert.strictEqual(F.orNominal('1033,2'), 1033.2); assert.strictEqual(F.orNominal('234.2'), 234.2);
@@ -101,6 +101,16 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
   assert(wb.includes('olcu!$A$1:$T$15') && wb.includes('kapak!$A$1:$B$2'), 'baskı alanı yalnız ikinci sekmede: ' + wb);
   assert.strictEqual(await z.file('xl/drawings/drawing1.xml').async('string'), '<xdr:wsDr><xdr:from><xdr:row>13</xdr:row></xdr:from><xdr:to><xdr:row>14</xdr:row></xdr:to></xdr:wsDr>', 'imza görseli kaymalı');
 
+  // Eski sürüm açıldıysa bir kez yenilenir; aynı sürümde, balon varken, hatada ve ikinci kez yenilenmez
+  { const oturum = () => { const d = {}; return { getItem: k => d[k] || null, setItem: (k, v) => { d[k] = v; } }; };
+    const sayfa = v => async () => '<script src="olcum-raporu.js?v=' + v + '"></script>';
+    let y = 0; const yen = () => { y++; }, o1 = oturum();
+    assert.strictEqual(await F.orSurumDenetle('a', sayfa('b'), o1, () => true, yen), true, 'eski sürüm yenilenir'); assert.strictEqual(y, 1);
+    assert.strictEqual(await F.orSurumDenetle('a', sayfa('b'), o1, () => true, yen), false, 'döngüye girmez'); assert.strictEqual(y, 1);
+    assert.strictEqual(await F.orSurumDenetle('b', sayfa('b'), oturum(), () => true, yen), false, 'güncel');
+    assert.strictEqual(await F.orSurumDenetle('a', sayfa('b'), oturum(), () => false, yen), false, 'çalışma varken yenilenmez');
+    assert.strictEqual(await F.orSurumDenetle('a', async () => { throw new Error('ağ'); }, oturum(), () => true, yen), false, 'ağ hatası'); assert.strictEqual(y, 1);
+  }
   // Uygunsuz şablon anlaşılır hata verir
   const bos = new JSZip(); bos.file('xl/workbook.xml', '<workbook><sheets><sheet r:id="a"/></sheets></workbook>'); bos.file('xl/_rels/workbook.xml.rels', '<Relationships/>');
   const bosBayt = await bos.generateAsync({ type: 'uint8array' });

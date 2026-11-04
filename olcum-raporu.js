@@ -262,7 +262,7 @@ function orPencereAc() {
     const m = document.createElement('div');
     m.id = 'olcumRaporuModal'; m.className = 'modal show';
     m.innerHTML = `<div class="modal-content" style="max-width:620px">
-        <h3>📋 Ölçüm Raporu</h3>
+        <h3>📋 Ölçüm Raporu <small style="font-size:11px;font-weight:normal;opacity:.7">${orSurum()}</small></h3>
         <div class="modal-body">
             <div style="font-weight:bold;margin-bottom:4px">Excel şablonu</div>
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
@@ -358,7 +358,24 @@ function orPencereAc() {
     ciz();
 }
 
+// GitHub Pages sayfayı 10 dk önbellekte tutar, ERP çerçevesinde Ctrl+F5 de modüle her zaman işlemez (eski sürümle rapor üretildi).
+// Açılışta yayındaki sürüme bakılır; farklıysa önbellek tazelenip sayfa BİR KEZ yenilenir. Balon çizilmeye başlandıysa yenilenmez.
+function orSurum() {
+    const b = document.querySelector('script[src*="olcum-raporu.js"]'), m = b && /[?&]v=([^&]+)/.exec(b.src);
+    return m ? m[1] : '';
+}
+async function orSurumDenetle(calisan, getir, oturum, bosMu, yenile) {
+    try {
+        const m = /olcum-raporu\.js\?v=([^"'&\s]+)/.exec(await getir());
+        if (!m || !calisan || m[1] === calisan || oturum.getItem('teknikresim_surum') === m[1] || !bosMu()) return false;
+        oturum.setItem('teknikresim_surum', m[1]);
+        yenile();
+        return true;
+    } catch (e) { return false; }      // çevrimdışı vb.: çalışan sürümle devam
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    orSurumDenetle(orSurum(), () => fetch(location.href.split('#')[0], { cache: 'reload' }).then(r => r.text()), sessionStorage, () => !annotations.length, () => location.reload());
     const b = document.getElementById('olcumRaporuBtn');
     if (b) b.addEventListener('click', orPencereAc);
 });
