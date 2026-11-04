@@ -61,6 +61,7 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
     const b = await F.orDoldur(JSZip, sab, [{ ad: 'C', olculer: [{ number: 1, dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, { number: 2, dimension: 'Ø27.5', lowerTolerance: '-2', upperTolerance: '2' }, { number: 3, dimension: '3x Ø6', lowerTolerance: '-1', upperTolerance: '+1' }] }], { tolerans: () => ({ alt: '-1.2', ust: '+1.2' }), sinifDegeriMi: o => o.dimension === '285', araliklar: [{ bas: 120, son: 400, metin: '± 1,2 mm' }] });
     const zk = await JSZip.loadAsync(b), xk = await zk.file('xl/worksheets/sheet2.xml').async('string');
     assert(xk.includes('sqref="L6:N9"') && xk.includes('sqref="F6:F9"'), 'kural tablonun tüm satırlarında (boş satır dâhil)');
+    assert(xk.includes('sqref="R6:T9"') && xk.includes('$M6') && xk.includes('$N6') && xk.includes('sqref="R8:T8"'), 'uygun değil sütunu üç ölçümü de izler (yapıştırmada silinmez)');
     assert(xk.includes('$E6') && xk.includes('$F6') && xk.includes('_xlfn.NUMBERVALUE'), 'nominal ve tolerans hücreden canlı okunur');
     assert(xk.includes('"±1,2"') && xk.includes('&gt;=120') && xk.includes('&lt;400'), 'sınıf tablosu formülde');
     assert(xk.length && [...xk.matchAll(/<formula>(.*?)<\/formula>/g)].every(m => m[1].length < 8192), 'Excel kural sınırı');
@@ -70,7 +71,7 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
     const st = await zk.file('xl/styles.xml').async('string'); assert(/<dxfs count="1"><dxf>.*FFFF0000/.test(st), 'kırmızı biçim');
     const iki = await F.orDoldur(JSZip, b, [{ ad: 'C', olculer: [{ number: 1, dimension: '10', lowerTolerance: '-1', upperTolerance: '1' }] }]);
     const x2 = await (await JSZip.loadAsync(iki)).file('xl/worksheets/sheet2.xml').async('string');
-    assert.strictEqual((x2.match(/<conditionalFormatting/g) || []).length, 1, 'eski kurallar silinmeli (yalnız canlı ölçüm kuralı)'); assert(!x2.includes('sqref="L8:N8"'), 'eski sabit kural kalmamalı');
+    assert.strictEqual((x2.match(/<conditionalFormatting/g) || []).length, 2, 'eski kurallar silinmeli (ölçüm + uygun değil)'); assert(!x2.includes('sqref="L8:N8"'), 'eski sabit kural kalmamalı');
     assert(/dxfId="1"/.test(x2), 'yeni biçim numarası');
   }
   // Sığan: biçim kalır, eski değerler (L dahil) silinir, alt bölüm yerinde

@@ -78,8 +78,8 @@ function orSade(h) { return 'SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(LOWER(' + h + '&""
 function orSadeMetin(t) { return t.replace(/ /g, '').replace('mm', ''); }
 // Canlı kuralın okuyabildiği nominal: 285, Ø27,5, R5. Okuyamadığına ("3x Ø6") rapor anındaki değerle sabit kural yazılır.
 function orCanliOkunur(nominal) { return nominal !== '' && /^[ØøRM ]*\d+(?:,\d+)?$/.test(String(nominal).replace('.', ',')); }
-function orOlcumKurali(ilk) {
-    const olcum = 'L' + ilk, e = '$E' + ilk, f = '$F' + ilk, t = orSade(f), n = orOlcumSayisi(e), v = orOlcumSayisi(olcum);
+function orOlcumKurali(ilk, olcum = 'L' + ilk) {
+    const e = '$E' + ilk, f = '$F' + ilk, t = orSade(f), n = orOlcumSayisi(e), v = orOlcumSayisi(olcum);
     const sayi = m => '_xlfn.NUMBERVALUE(' + m + ',",",".")';
     // "±1,2" → +1,2 ve -1,2; "+0,5/-0,2" → iki değer; tek taraf "+0,5" → +0,5 ve 0
     const a = sayi('SUBSTITUTE(IFERROR(LEFT(' + t + ',FIND("/",' + t + ')-1),' + t + '),"±","")');
@@ -102,16 +102,25 @@ function orKosullar(veri, ilk, son, dxf, standart) {
     let sira = 1;
     const kural = (ref, formul) => '<conditionalFormatting sqref="' + ref + '"><cfRule type="expression" dxfId="' + dxf + '" priority="' + (sira++) + '"><formula>' + orXml(formul) + '</formula></cfRule></conditionalFormatting>';
     let x = kural('L' + ilk + ':N' + son, orOlcumKurali(ilk));
+    // Excel'de normal yapıştırma hedef hücrenin kuralını siler (makrosuz engellenemez, sayfa koruması da kurtarmıyor).
+    // Yapıştırılmayan "uygun değil" sütunu da yanar: ölçüm hücresinin kırmızısı silinse de satırdaki uyarı kalır.
+    const uygunDegil = 'OR(' + ['$L', '$M', '$N'].map(k => orOlcumKurali(ilk, k + ilk)).join(',') + ')';
+    if (uygunDegil.length < 8000) x += kural('R' + ilk + ':T' + son, uygunDegil);
     if (standart && standart.araliklar && standart.araliklar.length) {
         const f = orToleransKurali(ilk, standart.araliklar);
         if (f.length < 8000) x += kural('F' + ilk + ':F' + son, f);   // sınır aşılırsa Excel dosyayı onarır: canlı tolerans kuralı yazılmaz
     }
     veri.forEach((v, i) => {
         if (orCanliOkunur(v.nominal)) return;
-        const r = ilk + i, sinir = v.sinir || {}, kos = [], sayi = orOlcumSayisi('L' + r);
-        if (sinir.alt != null) kos.push(sayi + '<' + sinir.alt);
-        if (sinir.ust != null) kos.push(sayi + '>' + sinir.ust);
-        if (kos.length) x += kural('L' + r + ':N' + r, 'IFERROR(AND(L' + r + '<>"",OR(' + kos.join(',') + ')),FALSE)');
+        const r = ilk + i, sinir = v.sinir || {};
+        const sabit = h => { const kos = [], sayi = orOlcumSayisi(h);
+            if (sinir.alt != null) kos.push(sayi + '<' + sinir.alt);
+            if (sinir.ust != null) kos.push(sayi + '>' + sinir.ust);
+            return kos.length ? 'IFERROR(AND(' + h + '<>"",OR(' + kos.join(',') + ')),FALSE)' : ''; };
+        if (sabit('L' + r)) {
+            x += kural('L' + r + ':N' + r, sabit('L' + r));
+            x += kural('R' + r + ':T' + r, 'OR(' + ['$L', '$M', '$N'].map(k => sabit(k + r)).join(',') + ')');
+        }
         if (v.sinifToleransi) x += kural('F' + r, 'AND(F' + r + '<>"",' + orSade('F' + r) + '<>"' + orSadeMetin(v.sinifToleransi) + '")');
     });
     return x;
