@@ -64,6 +64,8 @@ let currentFontFamily = 'Arial'; // Varsayılan yazı stili
 // Metin ekleme modu
 let isTextMode = false;
 let textAnnotations = []; // Metin açıklamaları için ayrı dizi
+let seciliMetin = null; // Tıklanarak seçilen metin (Delete ile silinir)
+let currentMetinRengi = '#000000'; // Eklenen metnin rengi (balon numarası rengi ayrı: varsayılanı beyaz, beyaz kâğıtta görünmez)
 let currentTextSize = 16; // Varsayılan metin boyutu
 let currentTextBox = 'none'; // Varsayılan: kutu yok
 let isDraggingText = false; // Metin sürükleme durumu
@@ -202,8 +204,6 @@ function setupEventListeners() {
     const applyToleranceBtn = document.getElementById('applyToleranceBtn');
     const clearToleranceBtn = document.getElementById('clearToleranceBtn');
     const openToleranceTableBtn = document.getElementById('openToleranceTableBtn');
-    const textSizeInput = document.getElementById('textSizeInput');
-    const textBoxSelect = document.getElementById('textBoxSelect');
 
     fileInput.addEventListener('change', handleFileUpload);
     backupFileInput.addEventListener('change', (e) => {
@@ -307,15 +307,6 @@ function setupEventListeners() {
         kutu.addEventListener('change', () => balonAyarUygula(ayar, balonAyarDegeri(ayar, kutu)));
     });
     
-    textSizeInput.addEventListener('change', (e) => {
-        currentTextSize = parseInt(e.target.value) || 16;
-        console.log('📏 Metin boyutu değiştirildi:', currentTextSize);
-    });
-    
-    textBoxSelect.addEventListener('change', (e) => {
-        currentTextBox = e.target.value;
-        console.log('⬜ Metin kutusu değiştirildi:', currentTextBox);
-    });
     
 
     // Zoom kontrolleri
@@ -363,6 +354,13 @@ function setupEventListeners() {
     canvas.addEventListener('mouseup', endDrawing);
     canvas.addEventListener('mouseleave', cancelDrawing);
     canvas.addEventListener('dblclick', handleDoubleClick);
+    document.addEventListener('keydown', (e) => {
+        if ((e.key !== 'Delete' && e.key !== 'Backspace') || !seciliMetin) return;
+        const odak = document.activeElement && document.activeElement.tagName;
+        if (odak === 'INPUT' || odak === 'TEXTAREA' || odak === 'SELECT') return;
+        e.preventDefault();
+        metniSil(seciliMetin);
+    });
     
     // Sağ tık menüsünü engelle ama metin ve çizgi silme kontrolü yap
     canvas.addEventListener('contextmenu', (e) => {
@@ -418,16 +416,8 @@ function setupEventListeners() {
         // Metin kontrolü
         for (let i = textAnnotations.length - 1; i >= 0; i--) {
             const textAnn = textAnnotations[i];
-            const textWidth = ctx.measureText(textAnn.text).width;
-            const textHeight = textAnn.fontSize;
-            
-            if (mouseX >= textAnn.x && mouseX <= textAnn.x + textWidth &&
-                mouseY >= textAnn.y && mouseY <= textAnn.y + textHeight) {
-                if (confirm(`"${textAnn.text}" metnini silmek istiyor musunuz?`)) {
-                    textAnnotations.splice(i, 1);
-                    redrawCanvas();
-                    showNotification('Metin silindi', 'success');
-                }
+            if (metinBul(mouseX, mouseY) === textAnn) {
+                if (confirm(`"${textAnn.text}" metnini silmek istiyor musunuz?`)) metniSil(textAnn);
                 return;
             }
         }
@@ -846,8 +836,19 @@ function startDrawing(e) {
         return;
     }
     
+    // Metne tıklandıysa seçilir (metin modunda da: üstüne yeni metin açılmaz)
+    const tiklananMetin = metinBul(mouseX, mouseY);
+    if (tiklananMetin !== seciliMetin) {
+        seciliMetin = tiklananMetin;
+        redrawCanvas();
+        if (seciliMetin) {
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+            showNotification('Metin seçildi — silmek için Delete tuşuna basın', 'info');
+        }
+    }
+
     // Metin modu aktifse - kutu çizimi başlat
-    if (isTextMode) {
+    if (isTextMode && !tiklananMetin) {
         isDrawingTextBox = true;
         textBoxStartX = mouseX;
         textBoxStartY = mouseY;
@@ -1245,7 +1246,7 @@ function draw(e) {
         const width = mouseX - textBoxStartX;
         const height = mouseY - textBoxStartY;
         
-        ctx.strokeStyle = currentTextColor;
+        ctx.strokeStyle = currentMetinRengi;
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(textBoxStartX, textBoxStartY, width, height);
@@ -1548,23 +1549,21 @@ async function endDrawing(e) {
         const width = Math.abs(endX - textBoxStartX);
         const height = Math.abs(endY - textBoxStartY);
         
-        // Çok küçük kutular için işlem yapma
-        if (width < 20 || height < 20) {
-            redrawCanvas();
-            return;
-        }
-        
+        // Tıklama (kutu çizilmedi): metin tıklanan yerden başlar, kutu metne göre açılır
+        const tiklama = width < 20 || height < 20;
+
         // Metin giriş modalı aç
-        const text = prompt('Metin kutusuna eklemek istediğiniz metni girin:');
+        const text = prompt('Eklemek istediğiniz metni girin:');
         if (text && text.trim() !== '') {
+            ctx.font = `bold ${currentTextSize}px ${currentFontFamily}`;
             const newTextBox = {
                 id: Date.now(),
-                x: Math.min(textBoxStartX, endX),
-                y: Math.min(textBoxStartY, endY),
-                width: width,
-                height: height,
+                x: tiklama ? textBoxStartX : Math.min(textBoxStartX, endX),
+                y: tiklama ? textBoxStartY : Math.min(textBoxStartY, endY),
+                width: tiklama ? ctx.measureText(text.trim()).width + 14 : width,
+                height: tiklama ? currentTextSize * 1.2 + 12 : height,
                 text: text.trim(),
-                color: currentTextColor,
+                color: currentMetinRengi,
                 fontSize: currentTextSize,
                 hasBox: currentTextBox === 'box', // Seçiciye göre kutu göster/gizle
                 fontFamily: currentFontFamily,
@@ -3488,9 +3487,9 @@ function undoLastAnnotation() {
                 
             case 'textBox':
                 // Metin kutusu silme
-                const textIndex = textBoxes.findIndex(t => t.id === lastAction.data.id);
+                const textIndex = textAnnotations.findIndex(t => t.id === lastAction.data.id);
                 if (textIndex !== -1) {
-                    textBoxes.splice(textIndex, 1);
+                    textAnnotations.splice(textIndex, 1);
                 }
                 break;
                 
@@ -3511,7 +3510,30 @@ function undoLastAnnotation() {
     }
 }
 
-// Balon ayarları: kutu → balon alanı → yeni balonda kullanılan değer. Değişiklik çizilmiş balonlara da uygulanır.
+// Metnin kapladığı alan: kutu metni kutunun tamamı, eski tek satır metin yazının genişliği
+function metinAlani(t) {
+    if (t.isBoxText && t.width && t.height) return { x: t.x, y: t.y, width: t.width, height: t.height };
+    ctx.font = `bold ${t.fontSize}px ${t.fontFamily || 'Arial'}`;
+    return { x: t.x, y: t.y, width: ctx.measureText(t.text).width, height: t.fontSize };
+}
+function metinBul(x, y) {
+    for (let i = textAnnotations.length - 1; i >= 0; i--) {
+        const a = metinAlani(textAnnotations[i]);
+        if (x >= a.x && x <= a.x + a.width && y >= a.y && y <= a.y + a.height) return textAnnotations[i];
+    }
+    return null;
+}
+function metniSil(t) {
+    const i = textAnnotations.indexOf(t);
+    if (i < 0) return;
+    textAnnotations.splice(i, 1);
+    if (seciliMetin === t) seciliMetin = null;
+    if (hoveredTextBox === t) hoveredTextBox = null;
+    redrawCanvas();
+    showNotification('Metin silindi', 'success');
+}
+
+// Balon ve metin ayarları: kutu → balon/metin alanı → yeniye uygulanan değer. Değişiklik çizilmişlere de uygulanır.
 const BALON_AYARLARI = [
     { id: 'balloonShapeSelect', alan: 'balloonShape', ata: v => { currentBalloonShape = v; } },
     { id: 'balloonColorSelect', alan: 'balloonColor', ata: v => { currentBalloonColor = v; } },
@@ -3520,21 +3542,26 @@ const BALON_AYARLARI = [
     { id: 'fillTypeSelect', alan: 'fillType', ata: v => { currentFillType = v; } },
     { id: 'balloonSizeInput', alan: 'balloonSize', sayi: 20, ata: v => { currentBalloonSize = v; } },
     { id: 'balloonTextSizeInput', alan: 'balloonTextSize', sayi: 16, ata: v => { currentBalloonTextSize = v; } },
-    { id: 'fontFamilySelect', alan: 'fontFamily', ata: v => { currentFontFamily = v; } }
+    { id: 'fontFamilySelect', alan: 'fontFamily', metinAlan: 'fontFamily', ata: v => { currentFontFamily = v; } },
+    { id: 'metinRenkSelect', metinAlan: 'color', ata: v => { currentMetinRengi = v; } },
+    { id: 'textSizeInput', metinAlan: 'fontSize', sayi: 16, ata: v => { currentTextSize = v; } },
+    { id: 'textBoxSelect', metinAlan: 'hasBox', metinDeger: v => v === 'box', kutuDeger: v => (v ? 'box' : 'none'), ata: v => { currentTextBox = v; } }
 ];
 function balonAyarDegeri(ayar, kutu) { return ayar.sayi ? (parseInt(kutu.value) || ayar.sayi) : kutu.value; }
 // Turuncu "kontrol et" balonları renk değişiminde turuncu kalır: uyarı kaybolmasın
 function balonAyarindanEtkilenir(ayar, balon) { return !(ayar.alan === 'balloonColor' && balon.aiKontrol); }
 function balonAyarUygula(ayar, deger) {
     ayar.ata(deger);
-    annotations.forEach(b => { if (balonAyarindanEtkilenir(ayar, b)) b[ayar.alan] = deger; });
-    if (annotations.length) redrawCanvas();
+    if (ayar.alan) annotations.forEach(b => { if (balonAyarindanEtkilenir(ayar, b)) b[ayar.alan] = deger; });
+    if (ayar.metinAlan) textAnnotations.forEach(t => { t[ayar.metinAlan] = ayar.metinDeger ? ayar.metinDeger(deger) : deger; });
+    if (annotations.length || textAnnotations.length) redrawCanvas();
 }
 // JSON yüklenince kutular kayıttaki balonları gösterir; balonlar farklıysa ya da değer listede yoksa kutu değişmez
 function balonAyarlariniKayittanAl() {
     BALON_AYARLARI.forEach(ayar => {
         const kutu = document.getElementById(ayar.id);
-        const degerler = annotations.filter(b => balonAyarindanEtkilenir(ayar, b)).map(b => b[ayar.alan]);
+        const degerler = ayar.alan ? annotations.filter(b => balonAyarindanEtkilenir(ayar, b)).map(b => b[ayar.alan])
+            : textAnnotations.map(t => (ayar.kutuDeger ? ayar.kutuDeger(t[ayar.metinAlan]) : t[ayar.metinAlan]));
         if (!kutu || !degerler.length || !degerler.every(v => v === degerler[0])) return;
         const eski = kutu.value;
         kutu.value = degerler[0];
@@ -3558,6 +3585,7 @@ function resetToDefaults() {
     // Renk Ayarları
     document.getElementById('lineColorSelect').value = '#2c3e50';
     document.getElementById('textColorSelect').value = '#ffffff';
+    document.getElementById('metinRenkSelect').value = '#000000';
     
     // Metin Ayarları
     document.getElementById('textSizeInput').value = '16';
@@ -3569,8 +3597,6 @@ function resetToDefaults() {
     }
 
     // Kutular kadar kullanılan değerler ve çizilmiş balonlar da döner (kutuda "Dolu" yazıp balon boş çıkıyordu)
-    currentTextSize = 16;
-    currentTextBox = 'none';
     BALON_AYARLARI.forEach(ayar => {
         const kutu = document.getElementById(ayar.id);
         if (kutu) balonAyarUygula(ayar, balonAyarDegeri(ayar, kutu));
@@ -3852,6 +3878,17 @@ function redrawCanvas(hideSnapPoints = false) {
         }
     });
     
+    // Seçili metnin çerçevesi (dışa aktarımda görünmez)
+    if (seciliMetin && !hideSnapPoints && textAnnotations.includes(seciliMetin)) {
+        const a = metinAlani(seciliMetin);
+        ctx.save();
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(a.x - 3, a.y - 3, a.width + 6, a.height + 6);
+        ctx.restore();
+    }
+
     // Çizgileri çiz
     lines.forEach(line => {
         ctx.strokeStyle = line.color || currentLineColor;
@@ -4622,7 +4659,7 @@ function toggleTextMode() {
         addTextBtn.style.color = '#ffffff';
         addTextBtn.textContent = '📝 Metin Modu (Aktif)';
         canvas.style.cursor = 'text';
-        showNotification('Metin modu aktif! Resme tıklayarak metin ekleyin.', 'info');
+        showNotification('Metin modu aktif! Resme tıklayın ya da sürükleyerek kutu çizin.', 'info');
     } else {
         addTextBtn.style.backgroundColor = '';
         addTextBtn.style.color = '';
@@ -4978,7 +5015,6 @@ function loadBackupFile(file) {
                 if (!ann.balloonTextSize) ann.balloonTextSize = 16;
                 if (!ann.fontFamily) ann.fontFamily = 'Arial';
             });
-            balonAyarlariniKayittanAl();
 
             // Başlangıç seçildiyse kayıt ona kayar; seçilmediyse kutu kaydın başlangıcını gösterir (sonraki sıralamalar kaydı 1'e çekmesin)
             if (annotations.length) {
@@ -4992,6 +5028,7 @@ function loadBackupFile(file) {
                 if (!textAnn.fontSize) textAnn.fontSize = 16;
                 if (!textAnn.fontFamily) textAnn.fontFamily = 'Arial';
             });
+            balonAyarlariniKayittanAl();
             
             // Tabloyu doldur ve canvas'ı çiz (görüntü yüklendikten SONRA çiz ki balonlar oturur)
             const finishRestore = () => {

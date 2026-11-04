@@ -166,11 +166,11 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   const tek = ad => { const i = app.indexOf('function ' + ad + '('); return app.slice(i, app.indexOf('\n', i)); };
   const ort = new Function(`
     let currentFillType = 'empty', currentBalloonShape = 'square', currentBalloonColor = 'x', currentBalloonSize = 9, currentBalloonTextSize = 9, currentLineColor = 'x', currentTextColor = 'x', currentTextSize = 9, currentTextBox = 'x', currentFontFamily = 'x';
-    let annotations = [{ fillType: 'empty', balloonColor: '#e74c3c' }, { fillType: 'empty', balloonColor: '#e67e22', aiKontrol: true }], baslangicElle = true, balloonCounter = 3, ciz = 0;
+    let currentMetinRengi = 'x'; let textAnnotations = [{ color: '#ffffff', fontSize: 9, hasBox: false, fontFamily: 'x' }]; let annotations = [{ fillType: 'empty', balloonColor: '#e74c3c' }, { fillType: 'empty', balloonColor: '#e67e22', aiKontrol: true }], baslangicElle = true, balloonCounter = 3, ciz = 0;
     const redrawCanvas = () => { ciz++; }, showNotification = () => { }, console = { log() { } };
     const kutu = {}, document = { getElementById: id => (kutu[id] = kutu[id] || { value: '' }) };
     ${tablo}\n${tek('balonAyarDegeri')}\n${tek('balonAyarindanEtkilenir')}\n${govde('balonAyarUygula')}\n${govde('balonAyarlariniKayittanAl')}\n${govde('resetToDefaults')}
-    return { resetToDefaults, balonAyarUygula, balonAyarlariniKayittanAl, ayar: alan => BALON_AYARLARI.find(a => a.alan === alan), an: () => annotations, yukle: l => { annotations = l; },
+    return { resetToDefaults, balonAyarUygula, balonAyarlariniKayittanAl, ayar: alan => BALON_AYARLARI.find(a => a.alan === alan), ayar2: id => BALON_AYARLARI.find(a => a.id === id), an: () => annotations, yukle: l => { annotations = l; }, metinler: () => textAnnotations, metinYukle: l => { textAnnotations = l; }, metinRengi: () => currentMetinRengi,
       dolgu: () => currentFillType, renk: () => currentBalloonColor, yazi: () => currentTextColor, boyut: () => currentBalloonSize, ciz: () => ciz, kutu, deger: balonAyarDegeri };`)();
   assert.strictEqual(new Set(['balloonShape','balloonColor','lineColor','textColor','fillType','balloonSize','balloonTextSize','fontFamily'].map(a => !!ort.ayar(a))).size, 1, 'tüm ayarlar tabloda');
   for (const a of ['balloonShape', 'lineColor', 'textColor', 'fontFamily', 'balloonSize', 'balloonTextSize', 'fillType']) { ort.balonAyarUygula(ort.ayar(a), 'Y'); assert(ort.an().every(b => b[a] === 'Y'), a + ' çizilmiş balonlara uygulanmalı'); }
@@ -186,7 +186,32 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   ort.yukle([{ fillType: 'empty', balloonSize: 25, lineColor: 'a' }, { fillType: 'empty', balloonSize: 25, lineColor: 'b' }]);
   ort.kutu.lineColorSelect.value = 'k'; ort.balonAyarlariniKayittanAl();
   assert.strictEqual(ort.kutu.fillTypeSelect.value, 'empty'); assert.strictEqual(ort.dolgu(), 'empty'); assert.strictEqual(ort.boyut(), 25); assert.strictEqual(ort.kutu.lineColorSelect.value, 'k', 'karışık değer kutuyu değiştirmez');
+  // Metin: renk/boyut/kutu/stil çizilmiş metne de uygulanır; numara rengi metni, metin rengi balonu etkilemez
+  const m0 = ort.metinler()[0], b0 = ort.an()[0]; const numara = b0.textColor;
+  ort.balonAyarUygula(ort.ayar2('metinRenkSelect'), '#e74c3c'); assert.strictEqual(m0.color, '#e74c3c', 'metin rengi metne'); assert.strictEqual(b0.textColor, numara, 'metin rengi balona geçmemeli'); assert.strictEqual(ort.metinRengi(), '#e74c3c');
+  ort.balonAyarUygula(ort.ayar('textColor'), '#000000'); assert.strictEqual(m0.color, '#e74c3c', 'numara rengi metni değiştirmemeli');
+  ort.balonAyarUygula(ort.ayar2('textSizeInput'), 30); assert.strictEqual(m0.fontSize, 30);
+  ort.balonAyarUygula(ort.ayar2('textBoxSelect'), 'box'); assert.strictEqual(m0.hasBox, true, 'kutu seçimi');
+  ort.balonAyarUygula(ort.ayar('fontFamily'), 'Verdana'); assert.strictEqual(m0.fontFamily, 'Verdana', 'stil metne de'); assert.strictEqual(b0.fontFamily, 'Verdana');
+  ort.yukle([]); ort.metinYukle([{ color: '#3498db', fontSize: 22, hasBox: true, fontFamily: 'Arial' }]); ort.kutu.fontFamilySelect.value = 'k'; ort.balonAyarlariniKayittanAl();
+  assert.strictEqual(ort.kutu.metinRenkSelect.value, '#3498db', 'JSON metin rengi kutuya'); assert.strictEqual(ort.kutu.textBoxSelect.value, 'box'); assert.strictEqual(ort.kutu.textSizeInput.value, 22);
+  ort.resetToDefaults(); assert.strictEqual(ort.kutu.metinRenkSelect.value, '#000000'); assert.strictEqual(ort.metinler()[0].color, '#000000', 'varsayılan metin siyah'); assert.strictEqual(ort.metinler()[0].hasBox, false);
+  assert(app.includes('color: currentMetinRengi,') && !/color: currentTextColor/.test(app), 'yeni metin beyaz numara rengini almamalı');
+  assert(html.includes('id="metinRenkSelect"'), 'metin rengi kutusu');
   const i = html.indexOf('id="textColorSelect"'); assert(html.slice(i, html.indexOf('</select>', i)).includes('value="#ffffff" selected'), 'yazı kutusu varsayılanı Beyaz');
+}
+// 7e) Metin seçme/silme: kutu metni tıklanan yerde bulunur, üst üste en üstteki; silince seçim kalkar; geri al tanımlı değişken kullanır
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8');
+  const govde = ad => { const i = app.indexOf('function ' + ad + '('); assert(i >= 0, ad); return app.slice(i, app.indexOf('\n}', i) + 2); };
+  const o = new Function(`let textAnnotations = [{ isBoxText: true, x: 10, y: 10, width: 100, height: 30, text: 'A', fontSize: 16 }, { isBoxText: true, x: 50, y: 20, width: 100, height: 30, text: 'B', fontSize: 16 }, { x: 300, y: 300, text: 'eski', fontSize: 20 }];
+    let seciliMetin = textAnnotations[1], hoveredTextBox = textAnnotations[1], ciz = 0;
+    const ctx = { measureText: () => ({ width: 40 }) }, redrawCanvas = () => { ciz++; }, showNotification = () => { };
+    ${govde('metinAlani')}\n${govde('metinBul')}\n${govde('metniSil')}
+    return { metinBul, metniSil, liste: () => textAnnotations.map(t => t.text), secili: () => seciliMetin, hover: () => hoveredTextBox, ciz: () => ciz };`)();
+  assert.strictEqual(o.metinBul(20, 20).text, 'A'); assert.strictEqual(o.metinBul(60, 25).text, 'B', 'üst üste en üstteki'); assert.strictEqual(o.metinBul(320, 310).text, 'eski', 'eski tek satır metin'); assert.strictEqual(o.metinBul(500, 500), null);
+  o.metniSil(o.metinBul(60, 25)); assert.deepStrictEqual(o.liste(), ['A', 'eski']); assert.strictEqual(o.secili(), null); assert.strictEqual(o.hover(), null); assert.strictEqual(o.ciz(), 1, 'yeniden çizim');
+  assert(!/\btextBoxes\b/.test(app), 'geri al tanımsız değişken kullanmamalı');
+  assert(app.includes('if (isTextMode && !tiklananMetin)') && app.includes("e.key !== 'Delete'"), 'seçim + Delete kablolaması');
 }
 // 7d) Renkli çizim: saf yeşil yazı mürekkep sayılır, griler değişmez; yakında siyah çizgi varken de kutu bulunur
 { const i = js.indexOf('function aiGriVeri('); const griVeri = new Function(js.slice(i, js.indexOf('\n}', i) + 2) + '\nreturn aiGriVeri;')();
