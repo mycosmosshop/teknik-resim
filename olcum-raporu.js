@@ -39,12 +39,12 @@ function orToleransKiyas(o, b) {
 // Sınıf verildiyse: otomatik gelen tolerans sınıfın değeriyle yazılır. Elle girilen (ya da hiçbir sınıfa uymayan eski kayıt)
 //   korunur; sınıftan farklıysa kırmızı. standart: {tolerans(boyut) → {alt, ust}, sinifDegeriMi(o)}
 function orToleransKarari(o, standart) {
-    const kendi = { alt: o.lowerTolerance, ust: o.upperTolerance, disi: false };
+    const kendi = { alt: o.lowerTolerance, ust: o.upperTolerance, disi: false, sinif: '' };
     if (!standart) return kendi;
-    const b = standart.tolerans(o.dimension) || {}, k = orToleransKiyas(o, b);
+    const b = standart.tolerans(o.dimension) || {}, k = orToleransKiyas(o, b), sinif = orTolerans(b.alt, b.ust);
     const elle = o.tolElle || (!k.kendisiBos && !standart.sinifDegeriMi(o));
-    if (!elle) return { alt: b.alt, ust: b.ust, disi: false };
-    return { ...kendi, disi: !k.kendisiBos && !k.sinifBos && !k.esit };
+    if (!elle) return { alt: b.alt, ust: b.ust, disi: false, sinif };
+    return { ...kendi, disi: !k.kendisiBos && !k.sinifBos && !k.esit, sinif };
 }
 // Seçilen çizimler → tablo satırları: Ref numarasına göre, çizim no grubun ilk satırında
 function orSatirlar(cizimler, standart) {
@@ -54,7 +54,7 @@ function orSatirlar(cizimler, standart) {
         [...c.olculer].sort((x, y) => Number(x.number) - Number(y.number)).forEach((o, i) => {
             const t = orToleransKarari(o, standart);
             satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(t.alt, t.ust),
-                sinir: orSinirlar(o.dimension, t.alt, t.ust), standartDisi: t.disi });
+                sinir: orSinirlar(o.dimension, t.alt, t.ust), standartDisi: t.disi, sinifToleransi: t.sinif });
         });
     });
     return satirlar;
@@ -72,20 +72,49 @@ function orOlcumSayisi(hucre) {
     [['.', ','], ['Ø', ''], ['ø', ''], ['R', ''], ['M', ''], [' ', '']].forEach(([a, b]) => { m = 'SUBSTITUTE(' + m + ',"' + a + '","' + b + '")'; });
     return '_xlfn.NUMBERVALUE(' + m + ',",",".")';
 }
-// Kırmızı işaret koşullu biçimle: ölçüm girilince Excel'de anında yanar, ölçüm düzeltilince söner
-function orKosullar(veri, ilk, dxf) {
+// Kırmızı işaret koşullu biçimle, tablonun TÜM satırlarına (boşlar dâhil): kurallar E ve F'yi Excel'de canlı okur;
+// yeni satıra ölçü girince, nominal ya da tolerans değişince, ölçüm girince anında yanar/söner.
+function orSade(h) { return 'SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(LOWER(' + h + '&"")," ",""),"mm",""),".",",")'; }
+function orSadeMetin(t) { return t.replace(/ /g, '').replace('mm', ''); }
+// Canlı kuralın okuyabildiği nominal: 285, Ø27,5, R5. Okuyamadığına ("3x Ø6") rapor anındaki değerle sabit kural yazılır.
+function orCanliOkunur(nominal) { return nominal !== '' && /^[ØøRM ]*\d+(?:,\d+)?$/.test(String(nominal).replace('.', ',')); }
+function orOlcumKurali(ilk) {
+    const olcum = 'L' + ilk, e = '$E' + ilk, f = '$F' + ilk, t = orSade(f), n = orOlcumSayisi(e), v = orOlcumSayisi(olcum);
+    const sayi = m => '_xlfn.NUMBERVALUE(' + m + ',",",".")';
+    // "±1,2" → +1,2 ve -1,2; "+0,5/-0,2" → iki değer; tek taraf "+0,5" → +0,5 ve 0
+    const a = sayi('SUBSTITUTE(IFERROR(LEFT(' + t + ',FIND("/",' + t + ')-1),' + t + '),"±","")');
+    const b = 'IF(LEFT(' + t + ',1)="±",-' + a + ',' + sayi('IFERROR(MID(' + t + ',FIND("/",' + t + ')+1,20),"0")') + ')';
+    return 'IFERROR(AND(' + olcum + '<>"",' + e + '<>"",' + f + '<>"",OR(ROUND(' + v + '-(' + n + '+MAX(' + a + ',' + b + ')),6)>0,ROUND(' + v + '-(' + n + '+MIN(' + a + ',' + b + ')),6)<0)),FALSE)';
+}
+// Seçilen sınıfın tablosu formüle gömülür: yeni satırda nominale göre beklenen tolerans bulunur (Ra, 0,5 altı: kontrol yok)
+function orToleransKurali(ilk, araliklar) {
+    const f = 'F' + ilk, e = '$E' + ilk, n = orOlcumSayisi(e);
+    const sirali = [...araliklar].sort((a, b) => a.bas - b.bas), t = orSade(f);
+    // Bitişik aralıkta alt sınır yazılmaz: Excel kural sınırı 8192 karakter, nominal formülü uzun
+    const farkli = sirali.reduceRight((d, r, i) => {
+        const altGerek = i ? sirali[i - 1].son !== r.bas : r.bas > 0.5;
+        const sonuc = t + '<>"' + orSadeMetin(r.metin) + '"';
+        return 'IF(' + n + '<' + r.son + ',' + (altGerek ? 'IF(' + n + '>=' + r.bas + ',' + sonuc + ',FALSE)' : sonuc) + ',' + d + ')';
+    }, 'FALSE');
+    return 'IFERROR(AND(' + f + '<>"",' + e + '<>"",' + n + '>=0.5,' + farkli + '),FALSE)';
+}
+function orKosullar(veri, ilk, son, dxf, standart) {
     let sira = 1;
     const kural = (ref, formul) => '<conditionalFormatting sqref="' + ref + '"><cfRule type="expression" dxfId="' + dxf + '" priority="' + (sira++) + '"><formula>' + orXml(formul) + '</formula></cfRule></conditionalFormatting>';
-    return veri.map((v, i) => {
-        const r = ilk + i, sinir = v.sinir || {}, kos = [];
-        const sayi = orOlcumSayisi('L' + r);
+    let x = kural('L' + ilk + ':N' + son, orOlcumKurali(ilk));
+    if (standart && standart.araliklar && standart.araliklar.length) {
+        const f = orToleransKurali(ilk, standart.araliklar);
+        if (f.length < 8000) x += kural('F' + ilk + ':F' + son, f);   // sınır aşılırsa Excel dosyayı onarır: canlı tolerans kuralı yazılmaz
+    }
+    veri.forEach((v, i) => {
+        if (orCanliOkunur(v.nominal)) return;
+        const r = ilk + i, sinir = v.sinir || {}, kos = [], sayi = orOlcumSayisi('L' + r);
         if (sinir.alt != null) kos.push(sayi + '<' + sinir.alt);
         if (sinir.ust != null) kos.push(sayi + '>' + sinir.ust);
-        let x = '';
         if (kos.length) x += kural('L' + r + ':N' + r, 'IFERROR(AND(L' + r + '<>"",OR(' + kos.join(',') + ')),FALSE)');
-        if (v.standartDisi) x += kural('F' + r, 'F' + r + '="' + v.tolerans + '"');   // Excel'de tolerans düzeltilince söner
-        return x;
-    }).join('');
+        if (v.sinifToleransi) x += kural('F' + r, 'AND(F' + r + '<>"",' + orSade('F' + r) + '<>"' + orSadeMetin(v.sinifToleransi) + '")');
+    });
+    return x;
 }
 
 async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
@@ -175,7 +204,7 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
         : /<dxfs\b/.test(stil) ? stil.replace(/<dxfs\b[^>]*>/, '<dxfs count="' + (dxf + 1) + '">').replace('</dxfs>', kirmizi + '</dxfs>')
         : stil.replace('</cellStyles>', '</cellStyles><dxfs count="1">' + kirmizi + '</dxfs>');
     zip.file('xl/styles.xml', stil);
-    const kosullar = orKosullar(veri, ilk, dxf);
+    const kosullar = orKosullar(veri, ilk, son + ek, dxf, standart);
     const yer = /<(dataValidations|hyperlinks|printOptions|pageMargins)\b/.exec(xml);
     if (kosullar) xml = yer ? xml.slice(0, yer.index) + kosullar + xml.slice(yer.index) : xml.replace('</worksheet>', kosullar + '</worksheet>');
     zip.file(sekmeYol, xml);
@@ -210,7 +239,11 @@ function orSinifTolerans(boyut, sinif) {
 }
 function orStandart(sinif) {
     const esit = (o, s) => { const k = orToleransKiyas(o, orSinifTolerans(o.dimension, s)); return k.esit && !k.sinifBos; };
-    return { tolerans: boyut => orSinifTolerans(boyut, sinif), sinifDegeriMi: o => OR_SINIFLAR.some(([s]) => esit(o, s)), esit };
+    const araliklar = toleranceRanges.map(r => {
+        const t = orSinifTolerans(String((r.start + r.end) / 2), sinif);
+        return { bas: r.start, son: r.end, metin: orTolerans(t.alt, t.ust) };
+    }).filter(r => r.metin);
+    return { tolerans: boyut => orSinifTolerans(boyut, sinif), sinifDegeriMi: o => OR_SINIFLAR.some(([s]) => esit(o, s)), esit, araliklar };
 }
 // Pencere açılınca: ölçülerin en çok uyduğu sınıf önerilir (kullanıcı değiştirir). Yanlış varsayılan bütün toleransları değiştirirdi.
 function orEnUygunSinif(cizimler) {
