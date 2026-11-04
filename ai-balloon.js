@@ -311,7 +311,8 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
 
 function aiGriVeri(kaynak) {
     const W = kaynak.width, H = kaynak.height, d = kaynak.getContext('2d').getImageData(0, 0, W, H).data, g = new Uint8Array(W * H);
-    for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    // en koyu kanal: parlaklık saf yeşil CAD yazısını 150 yapıyor, yakında siyah çizgi varken eşik 128'e iner, ölçü "yok" sayılırdı
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = Math.min(d[i], d[i + 1], d[i + 2]);
     return g;
 }
 

@@ -188,6 +188,18 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert.strictEqual(ort.kutu.fillTypeSelect.value, 'empty'); assert.strictEqual(ort.dolgu(), 'empty'); assert.strictEqual(ort.boyut(), 25); assert.strictEqual(ort.kutu.lineColorSelect.value, 'k', 'karışık değer kutuyu değiştirmez');
   const i = html.indexOf('id="textColorSelect"'); assert(html.slice(i, html.indexOf('</select>', i)).includes('value="#ffffff" selected'), 'yazı kutusu varsayılanı Beyaz');
 }
+// 7d) Renkli çizim: saf yeşil yazı mürekkep sayılır, griler değişmez; yakında siyah çizgi varken de kutu bulunur
+{ const i = js.indexOf('function aiGriVeri('); const griVeri = new Function(js.slice(i, js.indexOf('\n}', i) + 2) + '\nreturn aiGriVeri;')();
+  const piksel = [[0, 255, 0], [255, 255, 0], [255, 0, 0], [120, 120, 120], [255, 255, 255]];
+  const d = new Uint8ClampedArray(piksel.flatMap(p => [...p, 255]));
+  assert.deepStrictEqual([...griVeri({ width: 5, height: 1, getContext: () => ({ getImageData: () => ({ data: d }) }) })], [0, 0, 0, 120, 255], 'en koyu kanal');
+  // Yazı: 3 rakam (saf yeşil → griVeri 0), altında siyah parça çizgisi. Eski parlaklıkla (150) eşik 128'di, kutu çıkmıyordu
+  const W = 180, H = 180, g = new Uint8Array(W * H).fill(255), kutu = griVeri_ => F.aiYaziKutusu(griVeri_, W, H, 90, 90, 90, 3);
+  const rakam = (x0, v) => { for (let y = 80; y < 100; y++) for (let x = x0; x < x0 + 12; x++) if (y < 83 || y > 96 || x < x0 + 3 || x > x0 + 8) g[y * W + x] = v; };
+  for (let x = 0; x < W; x++) g[150 * W + x] = 0;
+  [68, 84, 100].forEach(x => rakam(x, 150)); assert.strictEqual(kutu(g), null, 'parlaklık 150 mürekkep değil (eski hata)');
+  [68, 84, 100].forEach(x => rakam(x, 0)); const k = kutu(g); assert(k && k.x <= 68 && k.x + k.width >= 112 && k.y <= 80 && k.y + k.height >= 100 && k.y + k.height < 140, 'yeşil yazı kutusu: ' + JSON.stringify(k));
+}
 // 8) Ctrl+tekerlek zoom: adim hareketle orantili ve sinirli (tek event en cok ~%16) — sabit x1.1 katlanmasi kalkti
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf("canvas.addEventListener('wheel'"); const g = app.slice(i, app.indexOf('}, { passive: false });', i));
   assert(!g.includes('? 0.9 : 1.1') && g.includes('Math.exp(') && g.includes('deltaMode'), 'zoom adimi orantili olmali');
