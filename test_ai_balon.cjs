@@ -121,6 +121,44 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   assert.deepStrictEqual(ctx.annotations.map(a => a.number), [1, 2], '2 silinince 1,3 → 1,2: ' + JSON.stringify(ctx.annotations));
   assert(numaralandi === 1 && tabloKuruldu === 1 && cizildi === 1, 'numarala + tablo + çizim birer kez');
 }
+// 7b) Başlangıç numarası: gerçek gövdelerle ✓ / Uygula / yeniden numarala / hizala / silme sonrası / JSON yükleme
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8');
+  const govde = ad => { const i = app.indexOf('function ' + ad + '('); assert(i >= 0, ad); return app.slice(i, app.indexOf('\n}', i) + 2); };
+  const yeni = (numaralar, bas, yon = 'none') => {
+    const girdi = { value: String(bas), addEventListener() { } };
+    const ctx = new Function('girdi', 'numaralar', 'yon', `
+      let baslangicElle = false, balloonCounter = 1, textAnnotations = [], currentImage = null, imageLoaded = false, sonBildirim = '', tablo = 0;
+      let annotations = numaralar.map((n, i) => ({ id: i + 1, number: n, rect: { x: 100 * i, y: 50, width: 40, height: 20 }, balloon: { x: 100 * i, y: 10 } }));
+      const canvas = { width: 800, height: 600 }, autoNumberDirectionSelect = { value: yon };
+      const document = { getElementById: id => id === 'startNumberInput' ? girdi : id === 'tableBody' ? { innerHTML: '' } : null };
+      const showNotification = m => { sonBildirim = m; }, redrawCanvas = () => { }, rebuildTable = () => { tablo++; }, addTableRow = () => { }, fitToScreen = () => { }, alert = m => { throw new Error(m); };
+      const console = { log() { }, warn() { }, error(e) { throw e; } };
+      class FileReader { readAsText(f) { this.onload({ target: { result: f } }); } }
+      ${govde('balonBaslangicNo')}\n${govde('balonlariKaydir')}\n${govde('setStartNumber')}\n${govde('applyAutoNumbering')}\n${govde('renumberAnnotations')}
+      ${govde('balonSaatYonuSirala')}\n${govde('balonlarHizali')}\n${govde('balonYay')}\n${govde('autoAlignBalloons')}\n${govde('loadBackupFile')}
+      return { setStartNumber, applyAutoNumbering, renumberAnnotations, autoAlignBalloons, loadBackupFile, secili: () => { baslangicElle = true; },
+        no: () => annotations.map(a => a.number), sayac: () => balloonCounter, tablo: () => tablo };`)(girdi, numaralar, yon);
+    ctx.girdi = girdi; return ctx;
+  };
+  let c = yeni([7, 8, 9], 21); c.setStartNumber();
+  assert.deepStrictEqual(c.no(), [21, 22, 23], '✓ balonları kaydırmalı'); assert.strictEqual(c.sayac(), 24, 'sonraki balon'); assert.strictEqual(c.tablo(), 1, 'tablo yenilenmeli');
+  c = yeni([1, 2, 5], 10); c.setStartNumber(); assert.deepStrictEqual(c.no(), [10, 11, 14], 'elle verilen aralık korunur');
+  c = yeni([], 21); c.setStartNumber(); assert.strictEqual(c.sayac(), 21, 'boşken sonraki balon');
+  c = yeni([7, 8, 9], 21); c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [21, 22, 23], 'yönsüz Uygula da kaydırmalı');
+  c = yeni([3, 1, 2], 21, 'left-right'); c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [21, 22, 23], 'sıralama yeni başlangıçtan');
+  c = yeni([30, 31, 32], 21, 'left-right'); c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [21, 22, 23], 'başlangıç küçülünce de');
+  c = yeni([1, 2, 3], 21); c.renumberAnnotations(); assert.deepStrictEqual(c.no(), [21, 22, 23], 'yeniden numarala');
+  c = yeni([22, 23], 21); c.renumberAnnotations(); assert.deepStrictEqual(c.no(), [21, 22], 'ilk balon silinince başlangıç kaymamalı');
+  c = yeni([1, 2, 3], 21); c.autoAlignBalloons(); assert.deepStrictEqual(c.no().slice().sort((a, b) => a - b), [21, 22, 23], 'hizala');
+  const kayit = JSON.stringify({ balloonCounter: 4, annotations: [{ id: 1, number: 1, rect: {} }, { id: 2, number: '2', rect: {} }, { id: 3, number: 3, rect: {} }] });
+  c = yeni([], 21); c.secili(); c.loadBackupFile(kayit); assert.deepStrictEqual(c.no(), [21, 22, 23], 'seçili başlangıçla JSON'); assert.strictEqual(c.sayac(), 24);
+  c = yeni([], 1); c.loadBackupFile(kayit); assert.deepStrictEqual(c.no(), [1, '2', 3], 'seçim yoksa kayıt aynen');
+  const kayit40 = JSON.stringify({ balloonCounter: 42, annotations: [{ id: 1, number: 40, rect: {} }, { id: 2, number: 41, rect: {} }] });
+  c = yeni([], 1); c.loadBackupFile(kayit40); assert.strictEqual(c.girdi.value, 40, 'kutu kaydın başlangıcını göstermeli'); assert.deepStrictEqual(c.no(), [40, 41]);
+  c.renumberAnnotations(); assert.deepStrictEqual(c.no(), [40, 41], 'kayıt 1\'e çekilmemeli');
+  c.girdi.value = '100'; c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [100, 101], 'yüklenen kayıtta Uygula');
+  assert(app.includes("addEventListener('change', () => {\n        baslangicElle = true;"), 'kutu değişimi seçim sayılmalı');
+}
 // 8) Ctrl+tekerlek zoom: adim hareketle orantili ve sinirli (tek event en cok ~%16) — sabit x1.1 katlanmasi kalkti
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf("canvas.addEventListener('wheel'"); const g = app.slice(i, app.indexOf('}, { passive: false });', i));
   assert(!g.includes('? 0.9 : 1.1') && g.includes('Math.exp(') && g.includes('deltaMode'), 'zoom adimi orantili olmali');

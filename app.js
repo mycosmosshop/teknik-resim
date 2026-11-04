@@ -38,6 +38,7 @@ let isDrawing = false;
 let startX, startY;
 let annotations = [];
 let balloonCounter = 1;
+let baslangicElle = false; // Başlangıç kutusu kullanıcı tarafından seçildi mi (JSON yüklerken kayıt ona kaydırılır)
 let currentImage = null;
 let pendingAnnotation = null;
 let imageDatabase = {};
@@ -296,6 +297,10 @@ function setupEventListeners() {
     addLineBtn.addEventListener('click', toggleLineMode);
     
     setStartNumberBtn.addEventListener('click', setStartNumber);
+    document.getElementById('startNumberInput').addEventListener('change', () => {
+        baslangicElle = true;
+        if (!annotations.length) balloonCounter = balonBaslangicNo();
+    });
     applyAutoNumberBtn.addEventListener('click', applyAutoNumbering);
     applyToleranceBtn.addEventListener('click', applyToleranceToAll);
     clearToleranceBtn.addEventListener('click', clearAllTolerances);
@@ -3029,10 +3034,15 @@ function setStartNumber() {
         return;
     }
     
-    balloonCounter = startNumber;
-    
-    console.log(`✅ Başlangıç numarası: ${startNumber} olarak ayarlandı`);
-    showNotification(`✓ Sonraki ölçü ${startNumber} numarasından başlayacak`, 'success');
+    baslangicElle = true;
+    balonlariKaydir(startNumber);
+    if (annotations.length) {
+        rebuildTable();
+        redrawCanvas();
+        showNotification(`✓ Balonlar ${startNumber} numarasından başlayacak şekilde numaralandı`, 'success');
+    } else {
+        showNotification(`✓ Sonraki ölçü ${startNumber} numarasından başlayacak`, 'success');
+    }
     
     // Input'u güncelle
     input.value = startNumber;
@@ -3043,10 +3053,10 @@ function applyAutoNumbering() {
     const direction = autoNumberDirectionSelect.value;
     
     if (direction === 'none') {
-        showNotification('Lütfen bir sıralama yöni seçin', 'warning');
+        setStartNumber();
         return;
     }
-    
+
     if (annotations.length === 0) {
         showNotification('Numaralandırılacak balon yok', 'warning');
         return;
@@ -3114,16 +3124,7 @@ function applyAutoNumbering() {
         }
     });
     
-    // ÖNEMLI: Mevcut en küçük numarayı bul - bu başlangıç olacak
-    // Böylece sıralama yaparken mevcut numaralar korunur
-    let startNum;
-    if (annotations.length > 0) {
-        const existingNumbers = annotations.map(a => a.number);
-        const minNumber = Math.min(...existingNumbers);
-        startNum = minNumber;
-    } else {
-        startNum = parseInt(document.getElementById('startNumberInput').value) || 1;
-    }
+    const startNum = balonBaslangicNo();
     
     console.log(`🔢 Sıralama başlangıç numarası: ${startNum}`);
     
@@ -3422,7 +3423,7 @@ function clearAnnotations() {
     if (confirm('Tüm balonları ve ölçüleri silmek istediğinizden emin misiniz?')) {
         annotations = [];
         textAnnotations = [];
-        balloonCounter = 1;
+        balloonCounter = balonBaslangicNo();
         document.getElementById('tableBody').innerHTML = '';
         redrawCanvas();
         showNotification('Balonlar ve metinler temizlendi', 'success');
@@ -3472,6 +3473,8 @@ function clearAll() {
         textAnnotations = [];
         lines = []; history = [];
         balloonCounter = 1;
+        baslangicElle = false;
+        document.getElementById('startNumberInput').value = '1';
         currentImage = null;
         imageLoaded = false;
         document.getElementById('tableBody').innerHTML = '';
@@ -3557,7 +3560,9 @@ function resetToDefaults() {
     document.getElementById('balloonTextSizeInput').value = '16';
     document.getElementById('fillTypeSelect').value = 'filled';
     document.getElementById('startNumberInput').value = '1';
-    
+    baslangicElle = false;
+    if (!annotations.length) balloonCounter = 1;
+
     // Renk Ayarları
     document.getElementById('lineColorSelect').value = '#2c3e50';
     document.getElementById('textColorSelect').value = '#000000';
@@ -4654,25 +4659,7 @@ function toggleLineMode() {
 
 // Balonları yeniden numaralandır (sol üstten başlayarak)
 function renumberAnnotations() {
-    // ÖNEMLI: Mevcut en küçük numarayı bul veya input'tan al
-    let startNumber;
-    const startInput = document.getElementById('startNumberInput');
-    
-    if (annotations.length > 0) {
-        // Mevcut numaraların en küçüğünü bul
-        const existingNumbers = annotations.map(a => a.number);
-        const minNumber = Math.min(...existingNumbers);
-        
-        // Input'tan gelen değer mevcut minimum'dan küçükse onu kullan
-        const inputValue = startInput ? parseInt(startInput.value) : null;
-        if (inputValue && inputValue < minNumber) {
-            startNumber = inputValue;
-        } else {
-            startNumber = minNumber;
-        }
-    } else {
-        startNumber = startInput ? (parseInt(startInput.value) || 1) : 1;
-    }
+    const startNumber = balonBaslangicNo();
     
     console.log('🔢 Yeniden numaralandırma başlıyor - Başlangıç:', startNumber);
     console.log('📊 Mevcut balon sayısı:', annotations.length);
@@ -4733,10 +4720,17 @@ function balonYay(g, aralik) {        // g: [{p}] sıralı istenen konumlar → 
     }
     kum.forEach(c => c.og.forEach((o, j) => { o.q = c.bas + j * aralik; }));
 }
+// Tüm numaralandırmaların ortak başlangıcı: Başlangıç kutusu
 function balonBaslangicNo() {
     const inp = document.getElementById('startNumberInput'), v = inp ? parseInt(inp.value) : NaN;
-    const enKucuk = annotations.length ? Math.min(...annotations.map(a => a.number)) : 1;
-    return v && v < enKucuk ? v : (isFinite(enKucuk) ? enKucuk : 1);
+    return v >= 1 ? v : 1;
+}
+// Sıra ve aralıklar korunarak en küçük numara bas olur
+function balonlariKaydir(bas) {
+    if (!annotations.length) { balloonCounter = bas; return; }
+    const fark = bas - Math.min(...annotations.map(a => Number(a.number)));
+    annotations.forEach(a => { a.number = Number(a.number) + fark; });
+    balloonCounter = Math.max(...annotations.map(a => a.number)) + 1;
 }
 // Saat yönü sırası: ölçülerin merkezinden balona açı, sol üst köşeden başlar (dikdörtgen çevresinde açı tekdüze artar)
 function balonSaatYonuSirala(liste) {
@@ -4982,7 +4976,13 @@ function loadBackupFile(file) {
                 if (!ann.balloonTextSize) ann.balloonTextSize = 16;
                 if (!ann.fontFamily) ann.fontFamily = 'Arial';
             });
-            
+
+            // Başlangıç seçildiyse kayıt ona kayar; seçilmediyse kutu kaydın başlangıcını gösterir (sonraki sıralamalar kaydı 1'e çekmesin)
+            if (annotations.length) {
+                if (baslangicElle) balonlariKaydir(balonBaslangicNo());
+                else document.getElementById('startNumberInput').value = Math.min(...annotations.map(a => Number(a.number)));
+            }
+
             // Metin açıklamaları için geriye dönük uyumluluk
             textAnnotations.forEach(textAnn => {
                 if (textAnn.hasBox === undefined) textAnn.hasBox = false;
