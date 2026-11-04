@@ -255,17 +255,43 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
 
 // ── Kontrol planı (PL 41): yalnız ölçüler. Şablondaki "Dimension N" satırları balonlardan yeniden yazılır (sıra no = N = balon no);
 //    ölçünün bağlı olduğu operasyon başlığı kalır, diğer operasyonlar ve ölçü dışı kontroller (malzeme, görsel, etiket, paketleme) silinir ──
-// Numune, sıklık, ekipman, yöntem balonda yok: aynı nominalli plan satırından, yoksa en yakın nominalli satırdan alınır.
-// Özel karakteristik (SC/CC) alınmaz: şablon başka parçanın planı olabilir, aynı nominal aynı özellik demek değil. "-" yazılır, elle işaretlenir.
+// Yöntem: tam sayı ölçü Tape Measure (yedek Steel Ruler), ondalık ölçü Caliper. Numune, sıklık, ekipman şablonun ölçü satırından gelir.
+// Özel karakteristik (SC/CC) alınmaz: şablon başka parçanın planı olabilir. "-" yazılır, elle işaretlenir.
 const OR_PLAN_OLCU = /^\s*(dimension|ölçü|boyut)\s*\d+\s*$/i;
-// Örnek satır: özel karakteristiği olmayan satırlardan aynı ya da en yakın nominal (biçimi de SC'siz gelsin)
-function orPlanOrnek(satirlar, nominal) {
-    const yazi = String(nominal).replace('.', ','), sayi = nominalDeger(yazi);
-    const duz = satirlar.filter(x => x.ozel === '-' || x.ozel === ''), liste = duz.length ? duz : satirlar;
-    const ayni = liste.find(x => x.metin === yazi) || liste.find(x => x.sayi === sayi);
-    if (ayni) return ayni;
-    const fark = x => (isNaN(x.sayi) || isNaN(sayi) ? Infinity : Math.abs(x.sayi - sayi));
-    return liste.reduce((en, x) => (fark(x) < fark(en) ? x : en), liste[0]);
+// Üst bilgi: etiket F'de, değer G'de. Boş değer boş yazılır: başka parçanın kodu planda kalmasın.
+const OR_PLAN_UST = [[/^stock\s*code$|^stok\s*kodu$/i, 'kod'], [/^stock\s*name$|^stok\s*ad[ıi]$/i, 'ad'], [/^customer$|^müşteri$/i, 'musteri']];
+// Birden çok çizimin ortak kodu: 9802-6849-1, 9802-6849-4 → 9802-6849; ortağı yoksa virgülle
+function orOrtakKod(kodlar) {
+    const k = [...new Set(kodlar.filter(Boolean))];
+    if (k.length < 2) return k[0] || '';
+    const par = k.map(x => x.split('-'));
+    let n = 0;
+    while (n < par[0].length && par.every(p => p[n] === par[0][n])) n++;
+    return n ? par[0].slice(0, n).join('-') : k.join(', ');
+}
+// Yedek dosya adındaki kod: teknik-resim-yedek-9802-6849-1 → 9802-6849-1; zaman damgasıysa kod yok
+function orDosyaKodu(ad) {
+    const k = String(ad || '').replace(/\.[^.]+$/, '').replace(/^(teknik-resim-yedek|drawing-backup)-/, '');
+    return /^\d+$/.test(k) ? '' : k;
+}
+// Antet okuma: JSON'daki çizim resmi Otomatik Balonla'nın Gemini ayarıyla okunur. Sonuç pencerede görünür, düzeltilebilir.
+const OR_ANTET_ISTEM = 'Bu bir teknik resim. Yalnız antete (başlık kutusu) ve çizimdeki mülkiyet yazısına bak. Şu JSON\'u döndür: {"kod":"çizim/parça numarası (antetteki No, Drawing No, Part No alanı)","ad":"parça adı (antetteki başlık; birden çok dilde yazılıysa ilk satır)","musteri":"çizimin sahibi firma (antetteki logo ya da mülkiyet yazısındaki firma adı)"}. Resimde açıkça yazmayan alanı boş bırak, tahmin etme.';
+async function orAntetOku(gorsel, sor) {
+    const y = await sor(gorsel, OR_ANTET_ISTEM);
+    const d = JSON.parse(String(y || '').replace(/^```(?:json)?|```$/g, '').trim() || '{}');
+    return { kod: String(d.kod || '').trim(), ad: String(d.ad || '').trim(), musteri: String(d.musteri || '').trim() };
+}
+// Resim PNG base64'e çevrilir (kayıt JPEG de olabilir), en fazla 2400 px: antet yazısı okunur kalsın
+function orGorselB64(src) {
+    return new Promise((tamam, hata) => {
+        const i = new Image();
+        i.onload = () => { const o = Math.min(1, 2400 / Math.max(i.width, i.height)), c = document.createElement('canvas');
+            c.width = Math.round(i.width * o); c.height = Math.round(i.height * o);
+            const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(i, 0, 0, c.width, c.height);
+            tamam(c.toDataURL('image/png').split(',')[1]); };
+        i.onerror = () => hata(new Error('resim açılamadı'));
+        i.src = src;
+    });
 }
 // Satırdaki verilen hücreler yazılır (biçim kalır), diğerleri olduğu gibi durur
 function orSatirYaz(r, n, yaz) {
@@ -295,7 +321,7 @@ function orPlanKosullar(veri, ilk, dxf, standart) {
     });
     return x;
 }
-async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
+async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart, bilgi) {
     const a = await orSablonAc(JSZipSinif, sablon), { zip, oku, wbRels, sekmeler, ortak } = a;
     let sekme = -1, xml = '', olcu = [];
     for (let i = 0; i < sekmeler.length && !olcu.length; i++) {
@@ -303,8 +329,9 @@ async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
         olcu = (xml.match(SATIR) || []).filter(r => OR_PLAN_OLCU.test(orHucreMetni(r, 'F', ortak)));
     }
     if (!olcu.length) throw new Error('Kontrol planında ölçü satırı bulunamadı (F sütununda "Dimension 1" gibi).');
-    const ornekler = olcu.map(r => { const metin = orHucreMetni(r, 'G', ortak); return { r, no: satirNo(r), metin, sayi: nominalDeger(metin), ozel: orHucreMetni(r, 'O', ortak) }; });
-    const nolar = ornekler.map(o => o.no), ilk = nolar[0], veri = orSatirlar(cizimler, standart);
+    const nolar = olcu.map(satirNo), ilk = nolar[0], veri = orSatirlar(cizimler, standart);
+    const ozelsiz = r => /^-?$/.test(orHucreMetni(r, 'O', ortak));
+    const ornek = olcu.find(ozelsiz) || olcu[0];         // biçimi SC'siz satırdan
     const kelime = /\S+/.exec(orHucreMetni(olcu[0], 'F', ortak))[0];
     // Tablo: başlık satırı ile son numaralı satır arası. Altındaki not/imza satırları durur.
     const tumu = (xml.match(SATIR) || []).map(r => ({ n: satirNo(r), a: orHucreMetni(r, 'A', ortak), f: orHucreMetni(r, 'F', ortak) }));
@@ -330,11 +357,17 @@ async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
 
     xml = xml.replace(SATIR, r => {
         const n = satirNo(r);
+        if (bilgi && n <= baslik) {
+            const f = orHucreMetni(r, 'F', ortak).trim(), u = OR_PLAN_UST.find(([e]) => e.test(f));
+            return u ? orSatirYaz(r, n, { G: bilgi[u[1]] || '' }) : r;
+        }
         if (n === ilk) return veri.map((v, i) => {
             const y = blok + i, sinir = v.sinir || {}, olcuMetni = String(v.nominal), adim = /^\s*R[az]\s*\d/i.test(olcuMetni) ? 'µm' : /°/.test(olcuMetni) ? '°' : 'mm';
             const yaz = { A: v.ref, F: kelime + ' ' + v.ref, G: olcuMetni.replace('.', ','), H: adim, I: sinir.alt != null ? sinir.alt : '-', J: sinir.ust != null ? sinir.ust : '-', O: '-' };
-            if (adim !== 'mm') { yaz.P = '-'; yaz.Q = '-'; }     // Ra, açı: ölçü aleti mm satırından tahmin edilmez
-            return orSatirYaz(satirTasi(orPlanOrnek(ornekler, v.nominal).r, y), y, yaz);
+            const ondalik = /\d[.,]\d/.test(olcuMetni);
+            yaz.P = adim !== 'mm' ? '-' : ondalik ? 'Caliper' : 'Tape Measure';   // Ra, açı: alet yazılmaz
+            yaz.Q = adim !== 'mm' || ondalik ? '-' : 'Steel Ruler';
+            return orSatirYaz(satirTasi(ornek, y), y, yaz);
         }).join('');
         return gider(n) ? '' : satirTasi(r, yeni(n));
     });
@@ -383,7 +416,7 @@ function orEnUygunSinif(cizimler) {
 function orPencereAc() {
     const eski = document.getElementById('olcumRaporuModal'); if (eski) eski.remove();
     const cizimler = [];
-    if (annotations.length) cizimler.push({ ad: window.__cizimAdi || '', olculer: annotations, secili: true, kaynak: 'Açık çizim' });
+    if (annotations.length) cizimler.push({ ad: window.__cizimAdi || '', olculer: annotations, secili: true, kaynak: 'Açık çizim', kod: window.__cizimAdi || '', gorsel: typeof currentImage !== 'undefined' && currentImage ? currentImage.src : '' });
 
     const m = document.createElement('div');
     m.id = 'olcumRaporuModal'; m.className = 'modal show';
@@ -408,6 +441,10 @@ function orPencereAc() {
                 <span style="font-weight:bold">Tolerans sınıfı</span>
                 <select id="orSinif" style="padding:4px;width:auto">${OR_SINIFLAR.map(([k, ad]) => '<option value="' + k + '">' + ad + '</option>').join('')}</select>
             </div>
+            <div id="orPlanBilgi" style="display:none;margin-top:12px">
+                <div style="font-weight:bold;margin-bottom:4px">Plan üst bilgisi <small id="orAntetDurum" style="font-weight:normal"></small></div>
+                ${[['orKod', 'Stok kodu'], ['orAd', 'Stok adı'], ['orMusteri', 'Müşteri']].map(([i, e]) => '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><label for="' + i + '" style="width:70px;margin:0;font-size:12px">' + e + '</label><input type="text" id="' + i + '" style="flex:1;padding:4px;width:auto"></div>').join('')}
+            </div>
             <div id="orStandart" style="margin-top:6px;font-size:12px"></div>
             <div id="orUyari" style="color:#c0392b;font-weight:bold;margin-top:6px"></div>
         </div>
@@ -421,9 +458,33 @@ function orPencereAc() {
     const seciliCizimler = () => cizimler.filter(c => c.secili);
     const tur = () => $('orTur').value;
     $('orTur').onchange = () => ciz();
+    ['orKod', 'orAd', 'orMusteri'].forEach(i => { $(i).oninput = () => { $(i).dataset.elle = '1'; }; });
+    const alanYaz = (i, v) => { if (!$(i).dataset.elle) $(i).value = v || ''; };
+    let antetBekleyen = Promise.resolve();
+    // Kod önce dosya adından; ad, müşteri ve adı olmayan çizimin kodu antetten. Elle yazılan alan ezilmez.
+    function antetDoldur() {
+        if (tur() !== 'plan') return;
+        const secili = seciliCizimler(), kodlar = secili.map(c => c.kod).filter(Boolean);
+        alanYaz('orKod', orOrtakKod(kodlar));
+        const c = secili.find(x => x.gorsel), durum = $('orAntetDurum');
+        if (!c) { durum.textContent = secili.length ? '(resim yok, elle yazın)' : ''; return; }
+        const ayar = aiAyar();
+        if (!ayar.key) { durum.textContent = '(Gemini anahtarı yok, elle yazın)'; return; }
+        if (!c.antet) c.antet = orAntetOku(c.gorsel, async (g, istem) => aiSor(await orGorselB64(g), ayar, istem)).catch(e => { console.error(e); return null; });
+        if (!c.antetBitti) durum.textContent = '(antet okunuyor…)';
+        antetBekleyen = c.antet.then(a => {
+            c.antetBitti = true;
+            if (c !== seciliCizimler().find(x => x.gorsel)) return;     // bu arada seçim değişti
+            durum.textContent = a ? '(antetten okundu, kontrol edin)' : '(antet okunamadı, elle yazın)';
+            if (!a) return;
+            alanYaz('orAd', a.ad); alanYaz('orMusteri', a.musteri);
+            if (!kodlar.length) alanYaz('orKod', a.kod);
+        });
+    }
     let sinifSecildi = false;
     $('orSinif').onchange = () => { sinifSecildi = true; uyar(); };
     function ciz() {
+        $('orPlanBilgi').style.display = tur() === 'plan' ? '' : 'none';
         const s = orSablonOku(tur());
         $('orSablonAd').textContent = s ? s.ad : 'Şablon seçilmedi (.xlsx, bir kez seçilir, bu tarayıcıda kalır)';
         const liste = $('orListe'); liste.innerHTML = '';
@@ -446,8 +507,9 @@ function orPencereAc() {
         if (!sinifSecildi) $('orSinif').value = orEnUygunSinif(seciliCizimler());
         const satirlar = orSatirlar(seciliCizimler(), orStandart($('orSinif').value)), disi = satirlar.filter(v => v.standartDisi).length;
         $('orStandart').textContent = 'Toleranslar bu sınıfa göre yazılır (' + satirlar.length + ' ölçü). ' + (disi ? disi + ' ölçüde sonradan girilen farklı tolerans var, raporda kırmızı yanar.' : 'Farklı tolerans yok.') +
-            (tur() === 'plan' ? ' Plan yalnız ölçülerden oluşur, sıra no = balon no; diğer operasyonlar çıkar. Numune, sıklık, yöntem aynı ya da en yakın nominalli satırdan gelir, kontrol edin. SC/CC gelmez, elle işaretleyin.' : '');
+            (tur() === 'plan' ? ' Plan yalnız ölçülerden oluşur, sıra no = balon no; diğer operasyonlar çıkar. Yöntem: tam sayı Tape Measure (yedek Steel Ruler), ondalık Caliper. Numune, sıklık, ekipman şablondan gelir. SC/CC gelmez, elle işaretleyin.' : '');
         const c = orCakisanNumaralar(seciliCizimler());
+        antetDoldur();
         $('orUyari').textContent = c.length ? 'Seçili çizimlerde aynı balon numarası var: ' + c.slice(0, 10).join(', ') + (c.length > 10 ? '…' : '') + '. Sonraki çizimin Başlangıç numarasını değiştirip kaydedin.' : '';
     }
 
@@ -467,7 +529,7 @@ function orPencereAc() {
                 const d = JSON.parse(await f.text());
                 if (!Array.isArray(d.annotations)) throw new Error('balon kaydı yok');
                 const dosyaAdi = f.name.replace(/\.[^.]+$/, '');
-                cizimler.push({ ad: d.cizimAdi || (/^(teknik-resim-yedek|drawing-backup)-/.test(dosyaAdi) ? '' : dosyaAdi), secili: true, kaynak: f.name.length > 24 ? f.name.slice(0, 22) + '…' : f.name,
+                cizimler.push({ ad: d.cizimAdi || (/^(teknik-resim-yedek|drawing-backup)-/.test(dosyaAdi) ? '' : dosyaAdi), kod: d.cizimAdi || orDosyaKodu(f.name), gorsel: d.image || '', secili: true, kaynak: f.name.length > 24 ? f.name.slice(0, 22) + '…' : f.name,
                     olculer: d.annotations.map(a => ({ number: a.number || a.id, dimension: a.dimension, lowerTolerance: a.lowerTolerance, upperTolerance: a.upperTolerance, tolElle: a.tolElle })) });
             } catch (err) { alert(f.name + ' okunamadı: ' + err.message); }
         }
@@ -479,7 +541,8 @@ function orPencereAc() {
         const secili = seciliCizimler();
         if (!secili.some(c => c.olculer.length)) { alert('Seçili çizimde ölçü yok.'); return; }
         try {
-            const cikti = await t.doldur(JSZip, orBaytlar(s.veri), secili, orStandart($('orSinif').value));
+            await antetBekleyen;
+            const cikti = await t.doldur(JSZip, orBaytlar(s.veri), secili, orStandart($('orSinif').value), { kod: $('orKod').value.trim(), ad: $('orAd').value.trim(), musteri: $('orMusteri').value.trim() });
             const url = URL.createObjectURL(new Blob([cikti], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
             const a = document.createElement('a'); a.href = url;
             a.download = s.ad.replace(/\.xlsx$/i, '') + ' - ' + t.ek + ' ' + new Date().toISOString().slice(0, 10) + '.xlsx';

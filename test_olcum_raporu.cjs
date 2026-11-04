@@ -3,7 +3,7 @@
 const fs = require('fs'), assert = require('assert'), JSZip = require('jszip');
 const appKod = fs.readFileSync(__dirname + '/app.js', 'utf8'), nd = appKod.indexOf('function nominalDeger(');
 const F = new Function('document', 'localStorage', appKod.slice(nd, appKod.indexOf('\n}', nd) + 2) + '\n' + fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
-  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas, orSurumDenetle, orPlanDoldur, orPlanOrnek, orHucreMetni};')({ addEventListener() { } }, {});
+  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas, orSurumDenetle, orPlanDoldur, orHucreMetni, orOrtakKod, orDosyaKodu, orAntetOku};')({ addEventListener() { } }, {});
 
 // Biçim dönüşümleri örnek rapordaki görünümle aynı
 assert.strictEqual(F.orNominal('285'), 285); assert.strictEqual(F.orNominal('1033,2'), 1033.2); assert.strictEqual(F.orNominal('234.2'), 234.2);
@@ -120,14 +120,30 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
     assert.deepStrictEqual([...p.x.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => +m[1]), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'başlık + operasyon + 5 ölçü + tablo altı');
     assert(!/Material|Fixture|Cut Quality|Label|OP 0|OP 3/.test(p.x), 'diğer operasyonlar ve ölçü dışı kontroller silinir');
     assert(satir(p.x, 2).includes('t="s"') && satir(p.x, 3).includes('OP 2 CUTTING'), 'tablo başlığı ve ölçülerin operasyonu kalır');
-    assert(satir(p.x, 4).includes('<c r="A4" s="3" ') === false && satir(p.x, 4).includes('<c r="A4" s="3"><v>27</v></c>') && satir(p.x, 4).includes('Dimension 27') && satir(p.x, 4).includes('<c r="I4" s="4"><v>299</v></c>') && satir(p.x, 4).includes('<c r="J4" s="4"><v>301</v></c>') && !p.x.includes('SC<') && !p.x.includes('s="5"') && satir(p.x, 4).includes('Ruler'), 'sıra no = balon no; SC şablondan taşınmaz (biçimi de): ' + satir(p.x, 4));
-    assert(satir(p.x, 5).includes('<v>28</v>') && satir(p.x, 5).includes('Caliper') && satir(p.x, 5).includes('<c r="I5" s="4"><v>24.5</v></c>') && !satir(p.x, 5).includes('>SC<'), '25 en yakın 20');
-    assert(satir(p.x, 6).includes('Ruler') && !satir(p.x, 6).includes('>SC<'), '290: SC satırı örnek alınmaz, 200 alınır: ' + satir(p.x, 6));
-    assert(satir(p.x, 7).includes('Ø12,5') && satir(p.x, 7).includes('<c r="I7" s="4" t="inlineStr"><is><t xml:space="preserve">-</t>'), 'toleranssız: tire');
+    assert(satir(p.x, 4).includes('<c r="A4" s="3" ') === false && satir(p.x, 4).includes('<c r="A4" s="3"><v>27</v></c>') && satir(p.x, 4).includes('Dimension 27') && satir(p.x, 4).includes('<c r="I4" s="4"><v>299</v></c>') && satir(p.x, 4).includes('<c r="J4" s="4"><v>301</v></c>') && !p.x.includes('SC<') && !p.x.includes('s="5"') && satir(p.x, 4).includes('Tape Measure') && satir(p.x, 4).includes('Steel Ruler'), 'sıra no = balon no; tam sayı şerit metre; SC şablondan taşınmaz (biçimi de): ' + satir(p.x, 4));
+    assert(satir(p.x, 5).includes('<v>28</v>') && satir(p.x, 5).includes('Tape Measure') && !satir(p.x, 5).includes('Caliper') && satir(p.x, 5).includes('<c r="I5" s="4"><v>24.5</v></c>'), 'nominal tam sayı: tolerans ondalık olsa da şerit metre');
+    assert(!satir(p.x, 6).includes('Caliper') && !/Fixture|Caliper/.test(satir(p.x, 6)), 'şablon yöntemi taşınmaz');
+    assert(satir(p.x, 7).includes('Caliper') && !satir(p.x, 7).includes('Steel Ruler') && /<c r="Q7"[^>]*><is><t xml:space="preserve">-</.test(satir(p.x, 7)) && satir(p.x, 7).includes('Ø12,5') && satir(p.x, 7).includes('<c r="I7" s="4" t="inlineStr"><is><t xml:space="preserve">-</t>'), 'toleranssız: tire');
     assert(satir(p.x, 8).includes('µm') && satir(p.x, 8).includes('Ra 3,2') && satir(p.x, 8).includes('<c r="P8" s="3" t="inlineStr"><is><t xml:space="preserve">-</t>'), 'Ra: birim, alet tahmin edilmez');
     assert(satir(p.x, 9).includes('Tablo alti not'), 'tablo altı satırı kalır, kayar');
     assert(p.x.includes('<mergeCells count="1"><mergeCell ref="A3:S3"/></mergeCells>') && p.x.includes('<dimension ref="A1:S10"/>') && p.wb.includes('$A$1:$S$8') && p.wb.includes('$2:$2'), 'birleşik, boyut, baskı alanı');
     assert(!p.x.includes('conditionalFormatting'), 'sınıf verilmedi: kural yok');
+    // Üst bilgi: etikete göre yazılır, boş gelirse eskisi kalmaz; bilgi verilmezse (şablon denemesi) dokunulmaz
+    { const uz = await JSZip.loadAsync(await plan());
+      const ux = await uz.file('xl/worksheets/sheet1.xml').async('string');
+      const us = (r, f, g) => `<row r="${r}"><c r="F${r}" t="inlineStr"><is><t>${f}</t></is></c><c r="G${r}" s="7" t="inlineStr"><is><t>${g}</t></is></c></row>`;
+      uz.file('xl/worksheets/sheet1.xml', ux.replace(/<row r="1">.*?<\/row><row r="2">.*?<\/row>/, us(1, 'Stock code', '5NA') + '<row r="2"><c r="A2" t="s"><v>0</v></c><c r="F2" t="s"><v>1</v></c></row>'));
+      const bay = await uz.generateAsync({ type: 'uint8array' });
+      const cik = async b => (await (await JSZip.loadAsync(await F.orPlanDoldur(JSZip, bay, c5, null, b))).file('xl/worksheets/sheet1.xml').async('string'));
+      assert((await cik({ kod: '9802-6849', ad: 'A', musteri: 'TEMSA' })).includes('9802-6849') && !(await cik({ kod: '9802-6849' })).includes('5NA'), 'kod yazılır');
+      const bos = await cik({}); assert(!bos.includes('5NA') && bos.includes('<c r="G1" s="7"/>'), 'boş bilgi: eski kod kalmaz, biçim durur');
+      assert((await cik()).includes('5NA'), 'bilgi yok: dokunulmaz');
+    }
+    assert.strictEqual(F.orOrtakKod(['9802-6849-1', '9802-6849-4', '']), '9802-6849'); assert.strictEqual(F.orOrtakKod(['9802-6849-1']), '9802-6849-1'); assert.strictEqual(F.orOrtakKod(['A-1', 'B-2']), 'A-1, B-2'); assert.strictEqual(F.orOrtakKod([]), '');
+    assert.strictEqual(F.orDosyaKodu('teknik-resim-yedek-9802-6849-1.json'), '9802-6849-1'); assert.strictEqual(F.orDosyaKodu('teknik-resim-yedek-1790759624458.json'), ''); assert.strictEqual(F.orDosyaKodu('Parca 7.json'), 'Parca 7');
+    assert.deepStrictEqual(await F.orAntetOku('r', async () => '{"kod":" 9802-6849-1 ","ad":"INSULATION DETAIL","musteri":"TEMSA"}'), { kod: '9802-6849-1', ad: 'INSULATION DETAIL', musteri: 'TEMSA' });
+    assert.deepStrictEqual(await F.orAntetOku('r', async () => null), { kod: '', ad: '', musteri: '' }, 'yanıt yok: boş');
+    await assert.rejects(() => F.orAntetOku('r', async () => 'bozuk'), 'bozuk yanıt hataya düşer, pencere "okunamadı" der');
     // Az ölçü: yine başlık + operasyon + ölçü
     p = await dok([{ ad: 'C', olculer: [{ number: 1, dimension: '20', lowerTolerance: '-1', upperTolerance: '1' }] }]);
     assert.deepStrictEqual([...p.x.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => +m[1]), [1, 2, 3, 4, 5, 6], 'tek ölçü');
