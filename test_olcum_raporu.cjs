@@ -3,7 +3,7 @@
 const fs = require('fs'), assert = require('assert'), JSZip = require('jszip');
 const appKod = fs.readFileSync(__dirname + '/app.js', 'utf8'), nd = appKod.indexOf('function nominalDeger(');
 const F = new Function('document', 'localStorage', appKod.slice(nd, appKod.indexOf('\n}', nd) + 2) + '\n' + fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
-  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas, orSurumDenetle};')({ addEventListener() { } }, {});
+  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas, orSurumDenetle, orPlanDoldur, orPlanOrnek, orHucreMetni};')({ addEventListener() { } }, {});
 
 // Biçim dönüşümleri örnek rapordaki görünümle aynı
 assert.strictEqual(F.orNominal('285'), 285); assert.strictEqual(F.orNominal('1033,2'), 1033.2); assert.strictEqual(F.orNominal('234.2'), 234.2);
@@ -102,6 +102,51 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
   assert(wb.includes('olcu!$A$1:$T$15') && wb.includes('kapak!$A$1:$B$2'), 'baskı alanı yalnız ikinci sekmede: ' + wb);
   assert.strictEqual(await z.file('xl/drawings/drawing1.xml').async('string'), '<xdr:wsDr><xdr:from><xdr:row>13</xdr:row></xdr:from><xdr:to><xdr:row>14</xdr:row></xdr:to></xdr:wsDr>', 'imza görseli kaymalı');
 
+  // Kontrol planı: ölçü satırları yeniden yazılır, diğerleri aynen; sıra numarası, kaydırma, en yakın nominal, SC bulaşmaz
+  { const ds = (r, a, f, g, o, p) => `<row r="${r}" ht="22"><c r="A${r}" s="3"><v>${a}</v></c><c r="B${r}" s="3"><v>2</v></c><c r="F${r}" s="3" t="inlineStr"><is><t>${f}</t></is></c><c r="G${r}" s="3" t="inlineStr"><is><t>${g}</t></is></c><c r="H${r}" s="3" t="inlineStr"><is><t>mm</t></is></c><c r="I${r}" s="4"><v>1</v></c><c r="J${r}" s="4"><v>2</v></c><c r="O${r}" s="${o === 'SC' ? 5 : 3}" t="inlineStr"><is><t>${o}</t></is></c><c r="P${r}" s="3" t="inlineStr"><is><t>${p}</t></is></c></row>`;
+    const plan = async () => { const z = new JSZip();
+      z.file('xl/workbook.xml', '<workbook><sheets><sheet name="Control Plan" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">\'Control Plan\'!$6:$6</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">\'Control Plan\'!$A$1:$S$8</definedName></definedNames><calcPr calcId="0" fullCalcOnLoad="1"/></workbook>');
+      z.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>');
+      z.file('xl/styles.xml', '<styleSheet><cellStyles></cellStyles></styleSheet>');
+      z.file('xl/sharedStrings.xml', '<sst><si><t>Dimension 9</t></si></sst>');
+      z.file('xl/worksheets/sheet1.xml', '<worksheet><dimension ref="A1:S8"/><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Sanifoam</t></is></c></row>' + ds(2, 1, 'Cut Quality', '-', '-', 'Visual')
+        + ds(3, 2, 'Dimension 1', '300', 'SC', 'Tape') + ds(4, 3, 'Dimension 2', '20', '-', 'Caliper') + ds(5, 4, 'Dimension 3', '200', '-', 'Ruler') + '<row r="6"><c r="A6" t="inlineStr"><is><t>OP 3</t></is></c></row>' + ds(7, 5, 'Label', '-', '-', 'Visual') + '<row r="8"><c r="A8"/></row></sheetData>'
+        + '<mergeCells count="1"><mergeCell ref="A6:S6"/></mergeCells><pageMargins/></worksheet>');
+      return z.generateAsync({ type: 'uint8array' }); };
+    const dok = async (cizim, st) => { const z = await JSZip.loadAsync(await F.orPlanDoldur(JSZip, await plan(), cizim, st)); return { x: await z.file('xl/worksheets/sheet1.xml').async('string'), wb: await z.file('xl/workbook.xml').async('string'), st: await z.file('xl/styles.xml').async('string') }; };
+    const c5 = [{ ad: 'C', olculer: [{ number: 7, dimension: '300', lowerTolerance: '-1', upperTolerance: '+1' }, { number: 8, dimension: '25', lowerTolerance: '-0.5', upperTolerance: '+0.5' }, { number: 9, dimension: '290', lowerTolerance: '-1', upperTolerance: '+1' }, { number: 10, dimension: 'Ø12.5' }, { number: 11, dimension: 'Ra 3.2' }] }];
+    let p = await dok(c5);
+    assert.deepStrictEqual([...p.x.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => +m[1]), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], '5 ölçü: satır sırası');
+    assert(satir(p.x, 3).includes('<c r="A3" s="3"><v>2</v></c>') && satir(p.x, 3).includes('Dimension 7') && satir(p.x, 3).includes('<c r="I3" s="4"><v>299</v></c>') && satir(p.x, 3).includes('<c r="J3" s="4"><v>301</v></c>') && satir(p.x, 3).includes('>SC<') && satir(p.x, 3).includes('Tape'), 'aynı nominal SC ile: ' + satir(p.x, 3));
+    assert(satir(p.x, 4).includes('Caliper') && satir(p.x, 4).includes('<c r="I4" s="4"><v>24.5</v></c>') && !satir(p.x, 4).includes('>SC<'), '25 en yakın 20');
+    assert(satir(p.x, 5).includes('Ruler') && satir(p.x, 5).includes('s="3" t="inlineStr"><is><t xml:space="preserve">290') && !satir(p.x, 5).includes('>SC<'), '290 en yakın 300 ama SC bulaşmaz, 200 alınır: ' + satir(p.x, 5));
+    assert(satir(p.x, 6).includes('Ø12,5') && satir(p.x, 6).includes('<c r="I6" s="4" t="inlineStr"><is><t xml:space="preserve">-</t>'), 'toleranssız: tire');
+    assert(satir(p.x, 7).includes('µm') && satir(p.x, 7).includes('Ra 3,2') && satir(p.x, 7).includes('<c r="P7" s="3" t="inlineStr"><is><t xml:space="preserve">-</t>'), 'Ra: birim, alet tahmin edilmez');
+    assert(satir(p.x, 2).includes('Cut Quality') && satir(p.x, 2).includes('<v>1</v>'), 'üstteki satır aynen');
+    assert(satir(p.x, 8).includes('OP 3') && satir(p.x, 9).includes('Label') && satir(p.x, 9).includes('<c r="A9" s="3"><v>7</v></c>'), 'alttakiler kayar, sıra no devam: ' + satir(p.x, 9));
+    assert(p.x.includes('<mergeCell ref="A8:S8"/>') && p.x.includes('<dimension ref="A1:S10"/>') && p.wb.includes("$A$1:$S$10") && p.wb.includes("$6:$6"), 'birleşik, boyut, baskı alanı');
+    assert(!p.x.includes('conditionalFormatting'), 'sınıf verilmedi: kural yok');
+    // Az ölçü: satır silinir
+    p = await dok([{ ad: 'C', olculer: [{ number: 1, dimension: '20', lowerTolerance: '-1', upperTolerance: '1' }] }]);
+    assert.deepStrictEqual([...p.x.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => +m[1]), [1, 2, 3, 4, 5, 6], 'tek ölçü: satır azalır');
+    assert(satir(p.x, 4).includes('OP 3') && p.x.includes('<mergeCell ref="A4:S4"/>') && p.wb.includes("$A$1:$S$6") && satir(p.x, 5).includes('<c r="A5" s="3"><v>3</v></c>'), 'yukarı kayar');
+    // Tolerans sınıfı: yazılan sınır sınıftan, elle farklısı korunur; canlı kural I ve J'de; önceki rapor şablon olsa da kural birikmez
+    const stP = { tolerans: d => (/^\d/.test(d) ? { alt: '-2', ust: '+2' } : {}), sinifDegeriMi: () => true, araliklar: [{ bas: 0, son: 400, metin: '± 2 mm', alt: -2, ust: 2 }] };
+    p = await dok([{ ad: 'C', olculer: [{ number: 1, dimension: '300', lowerTolerance: '-1', upperTolerance: '+1' }, { number: 2, dimension: '20', lowerTolerance: '-5', upperTolerance: '+5', tolElle: true }, { number: 3, dimension: '3x Ø6' }] }], stP);
+    assert(satir(p.x, 3).includes('<v>298</v>') && satir(p.x, 3).includes('<v>302</v>'), 'sınıftan sınır');
+    assert(satir(p.x, 4).includes('<v>15</v>') && satir(p.x, 4).includes('<v>25</v>'), 'elle tolerans korunur');
+    assert(p.x.includes('sqref="I3:I5"') && p.x.includes('sqref="J3:J5"') && p.x.includes('$G3') && /IF\(.*,-2,NA\(\)\)/.test(p.x), 'canlı kural');
+    assert(p.x.indexOf('<conditionalFormatting') > p.x.indexOf('</mergeCells>') && p.x.indexOf('</conditionalFormatting><pageMargins') > 0, 'şema sırası');
+    assert(/<dxfs count="1"><dxf>.*FFFF0000/.test(p.st), 'kırmızı biçim');
+    assert([...p.x.matchAll(/<formula>(.*?)<\/formula>/g)].every(m => m[1].length < 8192), 'Excel kural sınırı');
+    const ikinci = await JSZip.loadAsync(await F.orPlanDoldur(JSZip, await F.orPlanDoldur(JSZip, await plan(), c5, stP), c5, stP));
+    const x3 = await ikinci.file('xl/worksheets/sheet1.xml').async('string');
+    assert.strictEqual((x3.match(/sqref="I3:I7"/g) || []).length, 1, 'rapor yeniden şablon olunca kural birikmez');
+    await assert.rejects(async () => F.orDoldur(JSZip, await plan(), []), /ikinci sekme/, 'plan ölçüm raporu değildir');
+    const yanlis = new JSZip(); yanlis.file('xl/workbook.xml', '<workbook><sheets><sheet r:id="rId1"/></sheets></workbook>'); yanlis.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>'); yanlis.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData/></worksheet>');
+    await assert.rejects(async () => F.orPlanDoldur(JSZip, await yanlis.generateAsync({ type: 'uint8array' }), []), /ölçü satırı bulunamadı/);
+  }
+  assert.strictEqual(F.orHucreMetni('<row r="1"><c r="G1" t="inlineStr"><is><t>&#216;5</t></is></c></row>', 'G', []), 'Ø5', 'openpyxl kodlaması çözülür');
   // Eski sürüm açıldıysa bir kez yenilenir; aynı sürümde, balon varken, hatada ve ikinci kez yenilenmez
   { const oturum = () => { const d = {}; return { getItem: k => d[k] || null, setItem: (k, v) => { d[k] = v; } }; };
     const sayfa = v => async () => '<script src="olcum-raporu.js?v=' + v + '"></script>';

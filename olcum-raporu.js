@@ -5,6 +5,9 @@ const OR_SABLON_KEY = 'teknikresim_olcum_sablon';
 
 function orKolon(c) { let n = 0; for (const h of c) n = n * 26 + h.charCodeAt(0) - 64; return n; }
 function orXml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+// openpyxl Ø'yi &#216; yazar: okurken çözülmezse nominal 216 sanılır
+function orXmlCoz(s) { return s.replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'); }
+function orSayi(x) { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); }
 
 // "285"→285 (sayı), "Ø27.5"→"Ø27,5", "40 ±0.1"→40 (tolerans kendi sütununda)
 function orNominal(d) {
@@ -14,9 +17,8 @@ function orNominal(d) {
 }
 // -1.2 / +1.2 → "± 1,2 mm"; +0.5 / -0.2 → "+0,5 / -0,2 mm"
 function orTolerans(alt, ust) {
-    const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
     const yaz = v => String(Math.abs(v)).replace('.', ',');
-    const a = say(alt), u = say(ust);
+    const a = orSayi(alt), u = orSayi(ust);
     if (isNaN(a) && isNaN(u)) return '';
     if (a === -u && u !== 0) return '± ' + yaz(u) + ' mm';
     const isaretli = v => (v > 0 ? '+' : v < 0 ? '-' : '') + yaz(v);
@@ -24,15 +26,13 @@ function orTolerans(alt, ust) {
 }
 // Ölçü sınırları: nominal + alt/üst tolerans (tolerans yoksa o sınır yok). Ondalık gürültüsü atılır (285-1.2 = 283.8)
 function orSinirlar(boyut, alt, ust) {
-    const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
     const n = nominalDeger(boyut), kes = v => parseFloat(v.toFixed(6));
     if (isNaN(n)) return {};
-    return { alt: isNaN(say(alt)) ? null : kes(n + say(alt)), ust: isNaN(say(ust)) ? null : kes(n + say(ust)) };
+    return { alt: isNaN(orSayi(alt)) ? null : kes(n + orSayi(alt)), ust: isNaN(orSayi(ust)) ? null : kes(n + orSayi(ust)) };
 }
 // Ölçünün toleransı ile sınıf değeri (b: {alt, ust}) karşılaştırması
 function orToleransKiyas(o, b) {
-    const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
-    const a = say(o.lowerTolerance), u = say(o.upperTolerance), ba = say((b || {}).alt), bu = say((b || {}).ust);
+    const a = orSayi(o.lowerTolerance), u = orSayi(o.upperTolerance), ba = orSayi((b || {}).alt), bu = orSayi((b || {}).ust);
     const farkli = (x, y) => (isNaN(x) !== isNaN(y)) || (!isNaN(x) && Math.abs(x - y) > 1e-9);
     return { kendisiBos: isNaN(a) && isNaN(u), sinifBos: isNaN(ba) && isNaN(bu), esit: !farkli(a, ba) && !farkli(u, bu) };
 }
@@ -52,9 +52,9 @@ function orSatirlar(cizimler, standart) {
     const satirlar = [];
     cizimler.filter(c => c.olculer.length).sort((x, y) => enKucuk(x) - enKucuk(y)).forEach(c => {
         [...c.olculer].sort((x, y) => Number(x.number) - Number(y.number)).forEach((o, i) => {
-            const t = orToleransKarari(o, standart);
+            const t = orToleransKarari(o, standart), b = standart ? standart.tolerans(o.dimension) || {} : {};
             satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(t.alt, t.ust),
-                sinir: orSinirlar(o.dimension, t.alt, t.ust), standartDisi: t.disi, sinifToleransi: t.sinif });
+                sinir: orSinirlar(o.dimension, t.alt, t.ust), sinifSinir: orSinirlar(o.dimension, b.alt, b.ust), standartDisi: t.disi, sinifToleransi: t.sinif });
         });
     });
     return satirlar;
@@ -98,9 +98,12 @@ function orToleransKurali(ilk, araliklar) {
     }, 'FALSE');
     return 'IFERROR(AND(' + f + '<>"",' + e + '<>"",' + n + '>=0.5,' + farkli + '),FALSE)';
 }
-function orKosullar(veri, ilk, son, dxf, standart) {
+function orKuralYazici(dxf) {
     let sira = 1;
-    const kural = (ref, formul) => '<conditionalFormatting sqref="' + ref + '"><cfRule type="expression" dxfId="' + dxf + '" priority="' + (sira++) + '"><formula>' + orXml(formul) + '</formula></cfRule></conditionalFormatting>';
+    return (ref, formul) => '<conditionalFormatting sqref="' + ref + '"><cfRule type="expression" dxfId="' + dxf + '" priority="' + (sira++) + '"><formula>' + orXml(formul) + '</formula></cfRule></conditionalFormatting>';
+}
+function orKosullar(veri, ilk, son, dxf, standart) {
+    const kural = orKuralYazici(dxf);
     let x = kural('L' + ilk + ':N' + son, orOlcumKurali(ilk));
     // Excel'de normal yapıştırma hedef hücrenin kuralını siler (makrosuz engellenemez, sayfa koruması da kurtarmıyor).
     // Yapıştırılmayan "uygun değil" sütunu da yanar: ölçüm hücresinin kırmızısı silinse de satırdaki uyarı kalır.
@@ -126,26 +129,86 @@ function orKosullar(veri, ilk, son, dxf, standart) {
     return x;
 }
 
-async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
+// ── Ortak: şablon açma, hücre yazma, satır kaydırma, kırmızı biçim, dosyayı kapatma (ölçüm raporu ve kontrol planı) ──
+const SATIR = /<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g, HUCRE = /<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g;
+function satirNo(r) { return parseInt(/\br="(\d+)"/.exec(r)[1]); }
+function satirTasi(r, yeni) { return r.replace(/(<row\b[^>]*?\br=")\d+"/, '$1' + yeni + '"').replace(/(<c\b[^>]*?\br="[A-Z]+)\d+"/g, '$1' + yeni + '"'); }
+function orHucre(ref, s, deger) {
+    const st = s ? ' s="' + s + '"' : '';
+    if (deger === '' || deger == null) return '<c r="' + ref + '"' + st + '/>';
+    if (typeof deger === 'number') return '<c r="' + ref + '"' + st + '><v>' + deger + '</v></c>';
+    return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + orXml(deger) + '</t></is></c>';
+}
+// Hücre metni: ortak metin (Excel kaydı) ya da satır içi metin (openpyxl kaydı) ya da sayı
+function orHucreMetni(r, k, ortak) {
+    const c = (r.match(HUCRE) || []).find(h => new RegExp('\\br="' + k + '\\d+"').test(h));
+    if (!c) return '';
+    const v = /<v>([^<]*)<\/v>/.exec(c), t = /<t\b[^>]*>([^<]*)<\/t>/.exec(c);
+    return orXmlCoz(/\bt="s"/.test(c) ? (v ? ortak[+v[1]] || '' : '') : t ? t[1] : v ? v[1] : '');
+}
+async function orSablonAc(JSZipSinif, sablon) {
     const zip = await JSZipSinif.loadAsync(sablon);
     const oku = p => { const f = zip.file(p); if (!f) throw new Error('Şablonda eksik parça: ' + p); return f.async('string'); };
-
-    // İkinci sekmenin dosyası
-    let wb = await oku('xl/workbook.xml');
-    const wbRels = await oku('xl/_rels/workbook.xml.rels');
+    const wb = await oku('xl/workbook.xml'), wbRels = await oku('xl/_rels/workbook.xml.rels');
     const sekmeler = [...wb.matchAll(/<sheet\b[^>]*?r:id="([^"]+)"/g)].map(m => m[1]);
-    if (sekmeler.length < 2) throw new Error('Şablonda ikinci sekme yok.');
-    const hedefi = id => new RegExp('<Relationship\\b[^>]*\\bId="' + id + '"[^>]*>').exec(wbRels)[0].match(/Target="([^"]+)"/)[1];
-    const sekmeYol = 'xl/' + hedefi(sekmeler[1]).replace(/^\/?xl\//, '');
-    let xml = await oku(sekmeYol);
-
-    // Ortak metinler (tablonun başı ve sonu metinden bulunur)
+    const yol = i => 'xl/' + new RegExp('<Relationship\\b[^>]*\\bId="' + sekmeler[i] + '"[^>]*>').exec(wbRels)[0].match(/Target="([^"]+)"/)[1].replace(/^\/?xl\//, '');
     const ortak = zip.file('xl/sharedStrings.xml') ? [...(await oku('xl/sharedStrings.xml')).matchAll(/<si>([\s\S]*?)<\/si>/g)]
         .map(m => [...m[1].matchAll(/<t\b[^>]*>([^<]*)<\/t>/g)].map(t => t[1]).join('')) : [];
-    const SATIR = /<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g, HUCRE = /<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g;
-    const satirNo = r => parseInt(/\br="(\d+)"/.exec(r)[1]);
-    const bMetni = r => { const c = (r.match(HUCRE) || []).find(h => /\br="B\d+"/.test(h)); if (!c || !/t="s"/.test(c)) return '';
-        const v = /<v>(\d+)<\/v>/.exec(c); return v ? ortak[+v[1]] || '' : ''; };
+    return { zip, oku, wb, wbRels, sekmeler, yol, ortak };
+}
+// Satır numarası değişince başvurular: birleşik, bağlantı, boyut, seçim, koşullu biçim, baskı alanı, görseller (imza)
+// ponytail: aynı sekme içi formül başvuruları kaydırılmaz; F.063'te alt bölümde yalnız kapak! başvurusu var, planda formül yok.
+async function orKaydir(zip, oku, xml, wb, sekmeYol, sekmeNo, kaydir) {
+    const ref = s => s.replace(/(\$?[A-Z]{1,3}\$?)(\d+)/g, (m, k, n) => k + kaydir(parseInt(n)));
+    xml = xml.replace(/<(mergeCell|hyperlink|dimension)\b[^>]*?\bref="[^"]+"/g, m => m.replace(/ref="([^"]+)"/, (a, v) => 'ref="' + ref(v) + '"'));
+    xml = xml.replace(/\b(sqref|activeCell)="([^"]+)"/g, (m, a, v) => a + '="' + ref(v) + '"');
+    wb = wb.replace(new RegExp('(<definedName\\b[^>]*localSheetId="' + sekmeNo + '"[^>]*>)([^<]*)(</definedName>)', 'g'), (m, a, v, z) => a + v.replace(/\$([A-Z]+)\$(\d+)/g, (x, k, n) => '$' + k + '$' + kaydir(parseInt(n))) + z);
+    const relYol = sekmeYol.replace(/([^/]+)$/, '_rels/$1.rels');
+    if (zip.file(relYol)) {
+        const rels = await oku(relYol);
+        for (const m of rels.matchAll(/Target="([^"]*drawings\/[^"]+\.xml)"/g)) {
+            const p = 'xl/' + m[1].replace(/^(\.\.\/|\/xl\/)/, '');
+            zip.file(p, (await oku(p)).replace(/<xdr:row>(\d+)<\/xdr:row>/g, (a, n) => '<xdr:row>' + (kaydir(parseInt(n) + 1) - 1) + '</xdr:row>'));
+        }
+    }
+    return { xml, wb };
+}
+// Biçim dosyasına kırmızı eklenir, numarası döner
+async function orKirmiziEkle(zip, oku) {
+    const stil = await oku('xl/styles.xml');
+    const dxfSayi = /<dxfs\b[^>]*count="(\d+)"/.exec(stil), dxf = dxfSayi ? +dxfSayi[1] : 0;
+    const kirmizi = '<dxf><font><b/><color rgb="FFFFFFFF"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor rgb="FFFF0000"/></patternFill></fill></dxf>';
+    zip.file('xl/styles.xml', /<dxfs\b[^>]*\/>/.test(stil) ? stil.replace(/<dxfs\b[^>]*\/>/, '<dxfs count="1">' + kirmizi + '</dxfs>')
+        : /<dxfs\b/.test(stil) ? stil.replace(/<dxfs\b[^>]*>/, '<dxfs count="' + (dxf + 1) + '">').replace('</dxfs>', kirmizi + '</dxfs>')
+        : stil.replace('</cellStyles>', '</cellStyles><dxfs count="1">' + kirmizi + '</dxfs>'));
+    return dxf;
+}
+// Koşullu biçim şema sırasında yerine konur
+function orKosulEkle(xml, kosullar) {
+    const yer = /<(dataValidations|hyperlinks|printOptions|pageMargins)\b/.exec(xml);
+    if (!kosullar) return xml;
+    return yer ? xml.slice(0, yer.index) + kosullar + xml.slice(yer.index) : xml.replace('</worksheet>', kosullar + '</worksheet>');
+}
+// Formül sırası dosyası satır kayınca bozuk sayılır: silinir, Excel kendisi kurar; bağlantılar açılışta hesaplanır
+async function orBitir(zip, oku, wb, wbRels) {
+    if (zip.file('xl/calcChain.xml')) {
+        zip.remove('xl/calcChain.xml');
+        zip.file('[Content_Types].xml', (await oku('[Content_Types].xml')).replace(/<Override\b[^>]*calcChain[^>]*\/>/, ''));
+        zip.file('xl/_rels/workbook.xml.rels', wbRels.replace(/<Relationship\b[^>]*calcChain[^>]*\/>/, ''));
+    }
+    wb = /<calcPr\b/.test(wb) ? wb.replace(/<calcPr\b([^>]*?)\/>/, (m, a) => '<calcPr' + a.replace(/\s*fullCalcOnLoad="[^"]*"/, '') + ' fullCalcOnLoad="1"/>')
+        : wb.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
+    zip.file('xl/workbook.xml', wb);
+    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
+    const a = await orSablonAc(JSZipSinif, sablon), { zip, oku, wbRels, sekmeler, ortak } = a;
+    let wb = a.wb;
+    if (sekmeler.length < 2) throw new Error('Şablonda ikinci sekme yok.');
+    const sekmeYol = a.yol(1);
+    let xml = await oku(sekmeYol);
+    const bMetni = r => orHucreMetni(r, 'B', ortak);
 
     const satirlar = xml.match(SATIR) || [];
     const baslik = satirlar.find(r => /^Nr\.?\s*$/.test(bMetni(r)));
@@ -158,37 +221,16 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     const ek = Math.max(0, veri.length - (son - ilk + 1));
 
     // Sığmazsa: son satırın üstüne orta satırın biçimiyle satır açılır, altındaki her şey aşağı kayar.
-    // ponytail: aynı sekme içi formül başvuruları kaydırılmaz; F.063'te alt bölümde yalnız kapak! başvurusu var.
-    const kaydirSatir = n => (n >= son ? n + ek : n);
-    const kaydirRef = s => s.replace(/(\$?[A-Z]{1,3}\$?)(\d+)/g, (m, k, n) => k + kaydirSatir(parseInt(n)));
-    const satirTasi = (r, yeni) => r.replace(/(<row\b[^>]*?\br=")\d+"/, '$1' + yeni + '"').replace(/(<c\b[^>]*?\br="[A-Z]+)\d+"/g, '$1' + yeni + '"');
     if (ek) {
         const orta = satirlar.find(r => satirNo(r) === son - 1);
         const yeniler = Array.from({ length: ek }, (_, i) => satirTasi(orta, son + i)).join('');
         let eklendi = false;
         xml = xml.replace(SATIR, r => { const n = satirNo(r); if (n < son) return r;
             const t = satirTasi(r, n + ek); if (eklendi) return t; eklendi = true; return yeniler + t; });
-        xml = xml.replace(/<(mergeCell|hyperlink|dimension)\b[^>]*?\bref="[^"]+"/g, m => m.replace(/ref="([^"]+)"/, (a, v) => 'ref="' + kaydirRef(v) + '"'));
-        xml = xml.replace(/\bsqref="[^"]+"/g, m => m.replace(/sqref="([^"]+)"/, (a, v) => 'sqref="' + kaydirRef(v) + '"'));
-        // Print_Area ve görseller (imza) de kayar
-        wb = wb.replace(new RegExp('(<definedName\\b[^>]*localSheetId="1"[^>]*>)([^<]*)(</definedName>)', 'g'), (m, a, v, z) => a + v.replace(/\$([A-Z]+)\$(\d+)/g, (x, k, n) => '$' + k + '$' + kaydirSatir(parseInt(n))) + z);
-        const relYol = sekmeYol.replace(/([^/]+)$/, '_rels/$1.rels');
-        if (zip.file(relYol)) {
-            const rels = await oku(relYol);
-            for (const m of rels.matchAll(/Target="([^"]*drawings\/[^"]+\.xml)"/g)) {
-                const p = 'xl/' + m[1].replace(/^(\.\.\/|\/xl\/)/, '');
-                zip.file(p, (await oku(p)).replace(/<xdr:row>(\d+)<\/xdr:row>/g, (a, n) => '<xdr:row>' + (kaydirSatir(parseInt(n) + 1) - 1) + '</xdr:row>'));
-            }
-        }
+        ({ xml, wb } = await orKaydir(zip, oku, xml, wb, sekmeYol, 1, n => (n >= son ? n + ek : n)));
     }
 
     // Tablo satırları: eski değerler silinir (biçim kalır), yenileri yazılır. Ölçümler (L, M, N) ve uygun/uygun değil boş kalır.
-    const hucre = (ref, s, deger) => {
-        const st = s ? ' s="' + s + '"' : '';
-        if (deger === '' || deger == null) return '<c r="' + ref + '"' + st + '/>';
-        if (typeof deger === 'number') return '<c r="' + ref + '"' + st + '><v>' + deger + '</v></c>';
-        return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + orXml(deger) + '</t></is></c>';
-    };
     xml = xml.replace(SATIR, r => {
         const n = satirNo(r);
         if (n < ilk || n > son + ek) return r;
@@ -197,42 +239,109 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
         const mevcut = {};
         (r.match(HUCRE) || []).forEach(c => { const k = /\br="([A-Z]+)\d+"/.exec(c)[1], s = /\bs="(\d+)"/.exec(c); mevcut[k] = s ? s[1] : ''; });
         Object.keys(yaz).forEach(k => { if (!(k in mevcut)) mevcut[k] = ''; });
-        const govde = Object.keys(mevcut).sort((a, b) => orKolon(a) - orKolon(b)).map(k => hucre(k + n, mevcut[k], yaz[k])).join('');
+        const govde = Object.keys(mevcut).sort((a, b) => orKolon(a) - orKolon(b)).map(k => orHucre(k + n, mevcut[k], yaz[k])).join('');
         return acilis + govde + '</row>';
     });
     // Ölçüm sütunu başlıkları (üç ölçüm: L, M, N)
     [['L', '1. Ölçüm'], ['M', '2. Ölçüm'], ['N', '3. Ölçüm']].forEach(([k, b]) => {
-        xml = xml.replace(new RegExp('<c r="' + k + (ilk - 1) + '"( s="\\d+")?/>'), (m, st) => hucre(k + (ilk - 1), st ? /\d+/.exec(st)[0] : '', b));
+        xml = xml.replace(new RegExp('<c r="' + k + (ilk - 1) + '"( s="\\d+")?/>'), (m, st) => orHucre(k + (ilk - 1), st ? /\d+/.exec(st)[0] : '', b));
     });
     // Koşullu biçim: önceki rapordan kalan tablo kuralları silinir (rapor şablon olarak seçilmiş olabilir), yenileri eklenir
     xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="([A-Z]+)(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, k, r) => (+r >= ilk && +r <= son + ek ? '' : m));
-    let stil = await oku('xl/styles.xml');
-    const dxfSayi = /<dxfs\b[^>]*count="(\d+)"/.exec(stil), dxf = dxfSayi ? +dxfSayi[1] : 0;
-    const kirmizi = '<dxf><font><b/><color rgb="FFFFFFFF"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor rgb="FFFF0000"/></patternFill></fill></dxf>';
-    stil = /<dxfs\b[^>]*\/>/.test(stil) ? stil.replace(/<dxfs\b[^>]*\/>/, '<dxfs count="1">' + kirmizi + '</dxfs>')
-        : /<dxfs\b/.test(stil) ? stil.replace(/<dxfs\b[^>]*>/, '<dxfs count="' + (dxf + 1) + '">').replace('</dxfs>', kirmizi + '</dxfs>')
-        : stil.replace('</cellStyles>', '</cellStyles><dxfs count="1">' + kirmizi + '</dxfs>');
-    zip.file('xl/styles.xml', stil);
-    const kosullar = orKosullar(veri, ilk, son + ek, dxf, standart);
-    const yer = /<(dataValidations|hyperlinks|printOptions|pageMargins)\b/.exec(xml);
-    if (kosullar) xml = yer ? xml.slice(0, yer.index) + kosullar + xml.slice(yer.index) : xml.replace('</worksheet>', kosullar + '</worksheet>');
-    zip.file(sekmeYol, xml);
+    const dxf = await orKirmiziEkle(zip, oku);
+    zip.file(sekmeYol, orKosulEkle(xml, orKosullar(veri, ilk, son + ek, dxf, standart)));
+    return orBitir(zip, oku, wb, wbRels);
+}
 
-    // Formül sırası dosyası satır kayınca bozuk sayılır: silinir, Excel kendisi kurar; kapak bağlantıları açılışta hesaplanır
-    if (zip.file('xl/calcChain.xml')) {
-        zip.remove('xl/calcChain.xml');
-        zip.file('[Content_Types].xml', (await oku('[Content_Types].xml')).replace(/<Override\b[^>]*calcChain[^>]*\/>/, ''));
-        zip.file('xl/_rels/workbook.xml.rels', wbRels.replace(/<Relationship\b[^>]*calcChain[^>]*\/>/, ''));
+// ── Kontrol planı (PL 41): "Dimension N" satırları balonlardan yeniden yazılır; malzeme, etiket, paketleme satırları aynen kalır ──
+// Numune, sıklık, ekipman, yöntem, özel karakteristik balonda yok: aynı nominalli plan satırından, yoksa en yakın nominalli satırdan alınır.
+const OR_PLAN_OLCU = /^\s*(dimension|ölçü|boyut)\s*\d+\s*$/i;
+// Örnek satır: aynı nominal (SC/CC dâhil) ya da özel karakteristiği olmayan en yakın nominal (başka ölçüye SC bulaşmasın)
+function orPlanOrnek(satirlar, nominal) {
+    const yazi = String(nominal).replace('.', ','), sayi = nominalDeger(yazi);
+    const ayni = satirlar.find(x => x.metin === yazi) || satirlar.find(x => x.sayi === sayi);
+    if (ayni) return ayni;
+    const duz = satirlar.filter(x => x.ozel === '-' || x.ozel === ''), liste = duz.length ? duz : satirlar;
+    const fark = x => (isNaN(x.sayi) || isNaN(sayi) ? Infinity : Math.abs(x.sayi - sayi));
+    return liste.reduce((en, x) => (fark(x) < fark(en) ? x : en), liste[0]);
+}
+// Satırdaki verilen hücreler yazılır (biçim kalır), diğerleri olduğu gibi durur
+function orSatirYaz(r, n, yaz) {
+    const eski = {};
+    (r.match(HUCRE) || []).forEach(c => { eski[/\br="([A-Z]+)\d+"/.exec(c)[1]] = c; });
+    Object.keys(yaz).forEach(k => { const st = eski[k] && /\bs="(\d+)"/.exec(eski[k]); eski[k] = orHucre(k + n, st ? st[1] : '', yaz[k]); });
+    return /<row\b[^>]*?\/?>/.exec(r)[0].replace(/\/>$/, '>') + Object.keys(eski).sort((a, b) => orKolon(a) - orKolon(b)).map(k => eski[k]).join('') + '</row>';
+}
+// Sınır hücresi seçilen sınıfın değerinden farklıysa kırmızı: G'deki nominal ve sınıf tablosu Excel'de canlı okunur
+function orSinirKurali(h, e, araliklar, alan) {
+    const n = orOlcumSayisi(e), sirali = [...araliklar].sort((a, b) => a.bas - b.bas);
+    const tol = sirali.reduceRight((d, r, i) => {
+        const v = isNaN(r[alan]) ? 'NA()' : r[alan], altGerek = i ? sirali[i - 1].son !== r.bas : r.bas > 0.5;
+        return 'IF(' + n + '<' + r.son + ',' + (altGerek ? 'IF(' + n + '>=' + r.bas + ',' + v + ',NA())' : v) + ',' + d + ')';
+    }, 'NA()');
+    return 'IFERROR(AND(' + h + '<>"",' + h + '<>"-",' + e + '<>"",' + n + '>=0.5,ABS(' + h + '-(' + n + '+(' + tol + ')))>0.000001),FALSE)';
+}
+function orPlanKosullar(veri, ilk, dxf, standart) {
+    if (!veri.length || !standart) return '';
+    const kural = orKuralYazici(dxf), son = ilk + veri.length - 1, sutun = [['I', 'alt'], ['J', 'ust']];
+    let x = '';
+    if (standart.araliklar && standart.araliklar.length) sutun.forEach(([k, alan]) => { x += kural(k + ilk + ':' + k + son, orSinirKurali(k + ilk, '$G' + ilk, standart.araliklar, alan)); });
+    veri.forEach((v, i) => {
+        if (orCanliOkunur(v.nominal)) return;
+        const r = ilk + i;                 // "3x Ø6": canlı okunmaz, rapor anındaki sınıf sınırıyla sabit kural
+        sutun.forEach(([k, alan]) => { const b = (v.sinifSinir || {})[alan]; if (b != null) x += kural(k + r, 'IFERROR(AND(' + k + r + '<>"",' + k + r + '<>"-",ABS(' + k + r + '-' + b + ')>0.000001),FALSE)'); });
+    });
+    return x;
+}
+async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
+    const a = await orSablonAc(JSZipSinif, sablon), { zip, oku, wbRels, sekmeler, ortak } = a;
+    let sekme = -1, xml = '', olcu = [];
+    for (let i = 0; i < sekmeler.length && !olcu.length; i++) {
+        sekme = i; xml = await oku(a.yol(i));
+        olcu = (xml.match(SATIR) || []).filter(r => OR_PLAN_OLCU.test(orHucreMetni(r, 'F', ortak)));
     }
-    wb = /<calcPr\b/.test(wb) ? wb.replace(/<calcPr\b([^>]*?)\/>/, (m, a) => '<calcPr' + a.replace(/\s*fullCalcOnLoad="[^"]*"/, '') + ' fullCalcOnLoad="1"/>')
-        : wb.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
-    zip.file('xl/workbook.xml', wb);
-    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (!olcu.length) throw new Error('Kontrol planında ölçü satırı bulunamadı (F sütununda "Dimension 1" gibi).');
+    const ornekler = olcu.map(r => { const metin = orHucreMetni(r, 'G', ortak); return { r, no: satirNo(r), metin, sayi: nominalDeger(metin), ozel: orHucreMetni(r, 'O', ortak) }; });
+    const nolar = ornekler.map(o => o.no), ilk = nolar[0], veri = orSatirlar(cizimler, standart);
+    const kelime = /\S+/.exec(orHucreMetni(olcu[0], 'F', ortak))[0], aIlk = orHucreMetni(olcu[0], 'A', ortak);
+    let sira = /^\d+$/.test(aIlk) ? +aIlk : null;
+    // Eski satır → yeni satır: ölçü bloğu ilk satırda toplanır, sonrası blok kadar kayar (satır sayısı artar da azalır da)
+    const yeni = n => { const i = nolar.indexOf(n);
+        if (i >= 0) return ilk + Math.min(i, Math.max(veri.length - 1, 0));
+        return n - nolar.filter(x => x < n).length + (n > ilk ? veri.length : 0); };
+
+    // Önceki rapordan kalan kurallar ve ölçü satırındaki birleşikler satırlarla gider
+    xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="[A-Z]+(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, r) => (nolar.includes(+r) ? '' : m));
+    xml = xml.replace(/<mergeCell ref="[A-Z]+(\d+):[^"]*"\/>/g, (m, r) => (nolar.includes(+r) ? '' : m));
+    xml = xml.replace(/<mergeCells\b[^>]*>/, () => '<mergeCells count="' + (xml.match(/<mergeCell /g) || []).length + '">');
+    let wb;
+    ({ xml, wb } = await orKaydir(zip, oku, xml, a.wb, a.yol(sekme), sekme, yeni));
+
+    xml = xml.replace(SATIR, r => {
+        const n = satirNo(r);
+        if (n === ilk) return veri.map((v, i) => {
+            const y = ilk + i, sinir = v.sinir || {}, olcuMetni = String(v.nominal), adim = /^\s*R[az]\s*\d/i.test(olcuMetni) ? 'µm' : /°/.test(olcuMetni) ? '°' : 'mm';
+            const yaz = { F: kelime + ' ' + v.ref, G: olcuMetni.replace('.', ','), H: adim, I: sinir.alt != null ? sinir.alt : '-', J: sinir.ust != null ? sinir.ust : '-' };
+            if (adim !== 'mm') { yaz.P = '-'; yaz.Q = '-'; }     // Ra, açı: ölçü aleti mm satırından tahmin edilmez
+            if (sira !== null) yaz.A = sira++;
+            return orSatirYaz(satirTasi(orPlanOrnek(ornekler, v.nominal).r, y), y, yaz);
+        }).join('');
+        if (nolar.includes(n)) return '';
+        const t = satirTasi(r, yeni(n));
+        return n > ilk && sira !== null && /^\d+$/.test(orHucreMetni(r, 'A', ortak)) ? orSatirYaz(t, yeni(n), { A: sira++ }) : t;
+    });
+    const dxf = await orKirmiziEkle(zip, oku);
+    zip.file(a.yol(sekme), orKosulEkle(xml, orPlanKosullar(veri, ilk, dxf, standart)));
+    return orBitir(zip, oku, wb, wbRels);
 }
 
 // ── Arayüz ──
-function orSablonOku() {
-    try { return JSON.parse(localStorage.getItem(OR_SABLON_KEY)); } catch (e) { return null; }
+const OR_TURLER = {
+    olcum: { ad: 'Ölçüm raporu', anahtar: OR_SABLON_KEY, doldur: orDoldur, ek: 'olcum' },
+    plan: { ad: 'Kontrol planı', anahtar: 'teknikresim_kontrol_sablon', doldur: orPlanDoldur, ek: 'kontrol plani' }
+};
+function orSablonOku(tur = 'olcum') {
+    try { return JSON.parse(localStorage.getItem(OR_TURLER[tur].anahtar)); } catch (e) { return null; }
 }
 function orBase64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
 function orBaytlar(b64) { const s = atob(b64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; }
@@ -250,7 +359,7 @@ function orStandart(sinif) {
     const esit = (o, s) => { const k = orToleransKiyas(o, orSinifTolerans(o.dimension, s)); return k.esit && !k.sinifBos; };
     const araliklar = toleranceRanges.map(r => {
         const t = orSinifTolerans(String((r.start + r.end) / 2), sinif);
-        return { bas: r.start, son: r.end, metin: orTolerans(t.alt, t.ust) };
+        return { bas: r.start, son: r.end, metin: orTolerans(t.alt, t.ust), alt: orSayi(t.alt), ust: orSayi(t.ust) };
     }).filter(r => r.metin);
     return { tolerans: boyut => orSinifTolerans(boyut, sinif), sinifDegeriMi: o => OR_SINIFLAR.some(([s]) => esit(o, s)), esit, araliklar };
 }
@@ -271,8 +380,12 @@ function orPencereAc() {
     const m = document.createElement('div');
     m.id = 'olcumRaporuModal'; m.className = 'modal show';
     m.innerHTML = `<div class="modal-content" style="max-width:620px">
-        <h3>📋 Ölçüm Raporu <small style="font-size:11px;font-weight:normal;opacity:.7">${orSurum()}</small></h3>
+        <h3>📋 Rapor <small style="font-size:11px;font-weight:normal;opacity:.7">${orSurum()}</small></h3>
         <div class="modal-body">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+                <span style="font-weight:bold">Rapor türü</span>
+                <select id="orTur" style="padding:4px;width:auto">${Object.keys(OR_TURLER).map(k => '<option value="' + k + '">' + OR_TURLER[k].ad + '</option>').join('')}</select>
+            </div>
             <div style="font-weight:bold;margin-bottom:4px">Excel şablonu</div>
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
                 <span id="orSablonAd" style="flex:1"></span>
@@ -298,10 +411,12 @@ function orPencereAc() {
     const $ = id => document.getElementById(id);
 
     const seciliCizimler = () => cizimler.filter(c => c.secili);
+    const tur = () => $('orTur').value;
+    $('orTur').onchange = () => ciz();
     let sinifSecildi = false;
     $('orSinif').onchange = () => { sinifSecildi = true; uyar(); };
     function ciz() {
-        const s = orSablonOku();
+        const s = orSablonOku(tur());
         $('orSablonAd').textContent = s ? s.ad : 'Şablon seçilmedi (.xlsx, bir kez seçilir, bu tarayıcıda kalır)';
         const liste = $('orListe'); liste.innerHTML = '';
         if (!cizimler.length) liste.textContent = 'Henüz çizim yok. Balon ekleyin ya da JSON kayıt seçin.';
@@ -322,7 +437,8 @@ function orPencereAc() {
     function uyar() {
         if (!sinifSecildi) $('orSinif').value = orEnUygunSinif(seciliCizimler());
         const satirlar = orSatirlar(seciliCizimler(), orStandart($('orSinif').value)), disi = satirlar.filter(v => v.standartDisi).length;
-        $('orStandart').textContent = 'Toleranslar bu sınıfa göre yazılır (' + satirlar.length + ' ölçü). ' + (disi ? disi + ' ölçüde sonradan girilen farklı tolerans var, raporda kırmızı yanar.' : 'Farklı tolerans yok.');
+        $('orStandart').textContent = 'Toleranslar bu sınıfa göre yazılır (' + satirlar.length + ' ölçü). ' + (disi ? disi + ' ölçüde sonradan girilen farklı tolerans var, raporda kırmızı yanar.' : 'Farklı tolerans yok.') +
+            (tur() === 'plan' ? ' Yalnız "Dimension" satırları değişir, diğer satırlar aynen kalır. Numune, sıklık, yöntem aynı ya da en yakın nominalli satırdan gelir; SC/CC yalnız aynı nominalde gelir, kontrol edin.' : '');
         const c = orCakisanNumaralar(seciliCizimler());
         $('orUyari').textContent = c.length ? 'Seçili çizimlerde aynı balon numarası var: ' + c.slice(0, 10).join(', ') + (c.length > 10 ? '…' : '') + '. Sonraki çizimin Başlangıç numarasını değiştirip kaydedin.' : '';
     }
@@ -332,8 +448,8 @@ function orPencereAc() {
         const f = e.target.files[0]; if (!f) return;
         try {
             const buf = await f.arrayBuffer();
-            await orDoldur(JSZip, buf, []);      // şablon uygun mu: hata varsa kaydetmeden söyler
-            localStorage.setItem(OR_SABLON_KEY, JSON.stringify({ ad: f.name, veri: orBase64(buf) }));
+            await OR_TURLER[tur()].doldur(JSZip, buf, []);      // şablon uygun mu: hata varsa kaydetmeden söyler
+            localStorage.setItem(OR_TURLER[tur()].anahtar, JSON.stringify({ ad: f.name, veri: orBase64(buf) }));
             ciz();
         } catch (err) { alert('Şablon kullanılamadı: ' + err.message); }
     };
@@ -350,18 +466,18 @@ function orPencereAc() {
         e.target.value = ''; ciz();
     };
     $('orOlustur').onclick = async () => {
-        const s = orSablonOku();
+        const t = OR_TURLER[tur()], s = orSablonOku(tur());
         if (!s) { alert('Önce Excel şablonunu seçin.'); return; }
         const secili = seciliCizimler();
         if (!secili.some(c => c.olculer.length)) { alert('Seçili çizimde ölçü yok.'); return; }
         try {
-            const cikti = await orDoldur(JSZip, orBaytlar(s.veri), secili, orStandart($('orSinif').value));
+            const cikti = await t.doldur(JSZip, orBaytlar(s.veri), secili, orStandart($('orSinif').value));
             const url = URL.createObjectURL(new Blob([cikti], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
             const a = document.createElement('a'); a.href = url;
-            a.download = s.ad.replace(/\.xlsx$/i, '') + ' - olcum ' + new Date().toISOString().slice(0, 10) + '.xlsx';
+            a.download = s.ad.replace(/\.xlsx$/i, '') + ' - ' + t.ek + ' ' + new Date().toISOString().slice(0, 10) + '.xlsx';
             a.click(); URL.revokeObjectURL(url);
             m.remove();
-            showNotification('📋 Ölçüm raporu indirildi', 'success');
+            showNotification('📋 ' + t.ad + ' indirildi', 'success');
         } catch (err) { console.error(err); alert('Rapor oluşturulamadı: ' + err.message); }
     };
     ciz();
