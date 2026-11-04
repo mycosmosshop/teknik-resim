@@ -29,15 +29,22 @@ function orSinirlar(boyut, alt, ust) {
     if (isNaN(n)) return {};
     return { alt: isNaN(say(alt)) ? null : kes(n + say(alt)), ust: isNaN(say(ust)) ? null : kes(n + say(ust)) };
 }
-// Toleransı seçili standarttan farklı mı. Standardın karşılığı yoksa (Ra, çok küçük ölçü) ya da ölçüde tolerans yoksa uyarı yok.
-function orStandartDisi(o, standart) {
-    if (!standart) return false;
+// Ölçünün toleransı ile sınıf değeri (b: {alt, ust}) karşılaştırması
+function orToleransKiyas(o, b) {
     const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
-    const b = standart(o.dimension) || {};
-    const a = say(o.lowerTolerance), u = say(o.upperTolerance), ba = say(b.alt), bu = say(b.ust);
-    if ((isNaN(a) && isNaN(u)) || (isNaN(ba) && isNaN(bu))) return false;
+    const a = say(o.lowerTolerance), u = say(o.upperTolerance), ba = say((b || {}).alt), bu = say((b || {}).ust);
     const farkli = (x, y) => (isNaN(x) !== isNaN(y)) || (!isNaN(x) && Math.abs(x - y) > 1e-9);
-    return farkli(a, ba) || farkli(u, bu);
+    return { kendisiBos: isNaN(a) && isNaN(u), sinifBos: isNaN(ba) && isNaN(bu), esit: !farkli(a, ba) && !farkli(u, bu) };
+}
+// Sınıf verildiyse: otomatik gelen tolerans sınıfın değeriyle yazılır. Elle girilen (ya da hiçbir sınıfa uymayan eski kayıt)
+//   korunur; sınıftan farklıysa kırmızı. standart: {tolerans(boyut) → {alt, ust}, sinifDegeriMi(o)}
+function orToleransKarari(o, standart) {
+    const kendi = { alt: o.lowerTolerance, ust: o.upperTolerance, disi: false };
+    if (!standart) return kendi;
+    const b = standart.tolerans(o.dimension) || {}, k = orToleransKiyas(o, b);
+    const elle = o.tolElle || (!k.kendisiBos && !standart.sinifDegeriMi(o));
+    if (!elle) return { alt: b.alt, ust: b.ust, disi: false };
+    return { ...kendi, disi: !k.kendisiBos && !k.sinifBos && !k.esit };
 }
 // Seçilen çizimler → tablo satırları: Ref numarasına göre, çizim no grubun ilk satırında
 function orSatirlar(cizimler, standart) {
@@ -45,8 +52,9 @@ function orSatirlar(cizimler, standart) {
     const satirlar = [];
     cizimler.filter(c => c.olculer.length).sort((x, y) => enKucuk(x) - enKucuk(y)).forEach(c => {
         [...c.olculer].sort((x, y) => Number(x.number) - Number(y.number)).forEach((o, i) => {
-            satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(o.lowerTolerance, o.upperTolerance),
-                sinir: orSinirlar(o.dimension, o.lowerTolerance, o.upperTolerance), standartDisi: orStandartDisi(o, standart) });
+            const t = orToleransKarari(o, standart);
+            satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(t.alt, t.ust),
+                sinir: orSinirlar(o.dimension, t.alt, t.ust), standartDisi: t.disi });
         });
     });
     return satirlar;
@@ -191,11 +199,26 @@ function orSablonOku() {
 function orBase64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
 function orBaytlar(b64) { const s = atob(b64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; }
 
-// Seçili standardın bu ölçü için toleransı: ölçü eklerken kullanılan kuralın aynısı
-function orStandartTolerans(boyut) {
+const OR_SINIFLAR = [['fine', 'f (ince)'], ['medium', 'm (orta)'], ['coarse', 'c (kaba)'], ['veryCoarse', 'v (çok kaba)'], ['manual', 'Manuel (tablodaki)']];
+// Verilen sınıfın bu ölçü için toleransı; ölçü metninde yazılı tolerans ("40 ±0.1") sınıftan önce gelir
+function orSinifTolerans(boyut, sinif) {
+    const yazili = yaziliTolerans(boyut);
+    if (yazili) return { alt: '-' + yazili, ust: '+' + yazili };
     const b = { dimension: boyut };
-    applyDefaultTolerances(b);
+    tabloToleransUygula(b, sinif);
     return { alt: b.lowerTolerance, ust: b.upperTolerance };
+}
+function orStandart(sinif) {
+    const esit = (o, s) => { const k = orToleransKiyas(o, orSinifTolerans(o.dimension, s)); return k.esit && !k.sinifBos; };
+    return { tolerans: boyut => orSinifTolerans(boyut, sinif), sinifDegeriMi: o => OR_SINIFLAR.some(([s]) => esit(o, s)), esit };
+}
+// Pencere açılınca: ölçülerin en çok uyduğu sınıf önerilir (kullanıcı değiştirir). Yanlış varsayılan bütün toleransları değiştirirdi.
+function orEnUygunSinif(cizimler) {
+    const st = orStandart(activeToleranceClass), olculer = cizimler.flatMap(c => c.olculer);
+    const say = s => olculer.filter(o => st.esit(o, s)).length;
+    let en = activeToleranceClass, enSay = say(en);
+    OR_SINIFLAR.forEach(([s]) => { const n = say(s); if (n > enSay) { en = s; enSay = n; } });
+    return en;
 }
 
 function orPencereAc() {
@@ -218,7 +241,11 @@ function orPencereAc() {
             <div id="orListe" style="margin-bottom:8px"></div>
             <label class="btn btn-info" style="margin:0;cursor:pointer;padding:5px 10px;font-size:12px">➕ JSON kayıttan çizim ekle
                 <input type="file" id="orJson" accept=".json" multiple style="display:none"></label>
-            <div id="orStandart" style="margin-top:10px;font-size:12px"></div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+                <span style="font-weight:bold">Tolerans sınıfı</span>
+                <select id="orSinif" style="padding:4px;width:auto">${OR_SINIFLAR.map(([k, ad]) => '<option value="' + k + '">' + ad + '</option>').join('')}</select>
+            </div>
+            <div id="orStandart" style="margin-top:6px;font-size:12px"></div>
             <div id="orUyari" style="color:#c0392b;font-weight:bold;margin-top:6px"></div>
         </div>
         <div class="modal-buttons">
@@ -229,6 +256,8 @@ function orPencereAc() {
     const $ = id => document.getElementById(id);
 
     const seciliCizimler = () => cizimler.filter(c => c.secili);
+    let sinifSecildi = false;
+    $('orSinif').onchange = () => { sinifSecildi = true; uyar(); };
     function ciz() {
         const s = orSablonOku();
         $('orSablonAd').textContent = s ? s.ad : 'Şablon seçilmedi (.xlsx, bir kez seçilir, bu tarayıcıda kalır)';
@@ -249,10 +278,9 @@ function orPencereAc() {
         uyar();
     }
     function uyar() {
-        updateActiveSystemText();
-        const ad = document.getElementById('activeSystemText');
-        const disi = orSatirlar(seciliCizimler(), orStandartTolerans).filter(v => v.standartDisi).length;
-        $('orStandart').textContent = 'Tolerans kontrolü: ' + (ad ? ad.textContent : 'seçili standart') + (disi ? ' — ' + disi + ' ölçünün toleransı farklı, raporda kırmızı yanacak' : ' — hepsi uygun');
+        if (!sinifSecildi) $('orSinif').value = orEnUygunSinif(seciliCizimler());
+        const satirlar = orSatirlar(seciliCizimler(), orStandart($('orSinif').value)), disi = satirlar.filter(v => v.standartDisi).length;
+        $('orStandart').textContent = 'Toleranslar bu sınıfa göre yazılır (' + satirlar.length + ' ölçü). ' + (disi ? disi + ' ölçüde sonradan girilen farklı tolerans var, raporda kırmızı yanar.' : 'Farklı tolerans yok.');
         const c = orCakisanNumaralar(seciliCizimler());
         $('orUyari').textContent = c.length ? 'Seçili çizimlerde aynı balon numarası var: ' + c.slice(0, 10).join(', ') + (c.length > 10 ? '…' : '') + '. Sonraki çizimin Başlangıç numarasını değiştirip kaydedin.' : '';
     }
@@ -274,7 +302,7 @@ function orPencereAc() {
                 if (!Array.isArray(d.annotations)) throw new Error('balon kaydı yok');
                 const dosyaAdi = f.name.replace(/\.[^.]+$/, '');
                 cizimler.push({ ad: d.cizimAdi || (/^(teknik-resim-yedek|drawing-backup)-/.test(dosyaAdi) ? '' : dosyaAdi), secili: true, kaynak: f.name.length > 24 ? f.name.slice(0, 22) + '…' : f.name,
-                    olculer: d.annotations.map(a => ({ number: a.number || a.id, dimension: a.dimension, lowerTolerance: a.lowerTolerance, upperTolerance: a.upperTolerance })) });
+                    olculer: d.annotations.map(a => ({ number: a.number || a.id, dimension: a.dimension, lowerTolerance: a.lowerTolerance, upperTolerance: a.upperTolerance, tolElle: a.tolElle })) });
             } catch (err) { alert(f.name + ' okunamadı: ' + err.message); }
         }
         e.target.value = ''; ciz();
@@ -285,7 +313,7 @@ function orPencereAc() {
         const secili = seciliCizimler();
         if (!secili.some(c => c.olculer.length)) { alert('Seçili çizimde ölçü yok.'); return; }
         try {
-            const cikti = await orDoldur(JSZip, orBaytlar(s.veri), secili, orStandartTolerans);
+            const cikti = await orDoldur(JSZip, orBaytlar(s.veri), secili, orStandart($('orSinif').value));
             const url = URL.createObjectURL(new Blob([cikti], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
             const a = document.createElement('a'); a.href = url;
             a.download = s.ad.replace(/\.xlsx$/i, '') + ' - olcum ' + new Date().toISOString().slice(0, 10) + '.xlsx';

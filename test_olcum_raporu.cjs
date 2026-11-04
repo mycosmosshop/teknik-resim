@@ -3,7 +3,7 @@
 const fs = require('fs'), assert = require('assert'), JSZip = require('jszip');
 const appKod = fs.readFileSync(__dirname + '/app.js', 'utf8'), nd = appKod.indexOf('function nominalDeger(');
 const F = new Function('document', 'localStorage', appKod.slice(nd, appKod.indexOf('\n}', nd) + 2) + '\n' + fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
-  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orStandartDisi};')({ addEventListener() { } }, {});
+  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orToleransKarari, orToleransKiyas};')({ addEventListener() { } }, {});
 
 // Biçim dönüşümleri örnek rapordaki görünümle aynı
 assert.strictEqual(F.orNominal('285'), 285); assert.strictEqual(F.orNominal('1033,2'), 1033.2); assert.strictEqual(F.orNominal('234.2'), 234.2);
@@ -14,12 +14,21 @@ assert.strictEqual(F.orTolerans('-0.2', '+0.5'), '+0,5 / -0,2 mm'); assert.stric
 // Sınırlar ve standart kontrolü
 assert.deepStrictEqual(F.orSinirlar('285', '-1.2', '+1.2'), { alt: 283.8, ust: 286.2 }); assert.deepStrictEqual(F.orSinirlar('Ø27,5', '-2', '2'), { alt: 25.5, ust: 29.5 });
 assert.deepStrictEqual(F.orSinirlar('R5', '', ''), { alt: null, ust: null }); assert.deepStrictEqual(F.orSinirlar('yazı', '-1', '1'), {});
-const std = d => (d === 'Ra 3.2' ? {} : { alt: '-1,2', ust: '+1,2' });
-assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, std), false, 'aynı');
-assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-2', upperTolerance: '+2' }, std), true, 'farklı');
-assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+0.5' }, std), true, 'tek taraf farklı');
-assert.strictEqual(F.orStandartDisi({ dimension: 'Ra 3.2', lowerTolerance: '-1', upperTolerance: '+1' }, std), false, 'standart karşılığı yok');
-assert.strictEqual(F.orStandartDisi({ dimension: '285' }, std), false, 'toleranssız ölçü'); assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-2', upperTolerance: '2' }), false, 'standart verilmedi');
+// c sınıfı (285 → ±1,2; Ra karşılıksız). Sınıf değeri olan eski kayıt = otomatik sayılır
+const SINIFLAR = { '285': ['0.5', '1.2', '2.5'], '6': ['0.2', '0.5', '1'] };
+const std = { tolerans: d => (SINIFLAR[d] ? { alt: '-' + SINIFLAR[d][1], ust: '+' + SINIFLAR[d][1] } : {}),
+  sinifDegeriMi: o => (SINIFLAR[o.dimension] || []).some(v => F.orToleransKiyas(o, { alt: '-' + v, ust: '+' + v }).esit) };
+const kr = o => F.orToleransKarari(o, std);
+assert.deepStrictEqual(kr({ dimension: '285', lowerTolerance: '-0,5', upperTolerance: '+0,5' }), { alt: '-1.2', ust: '+1.2', disi: false }, 'otomatik gelen m toleransı c olur, kırmızı değil');
+assert.strictEqual(kr({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }).disi, false, 'zaten c');
+assert.deepStrictEqual(kr({ dimension: '285' }), { alt: '-1.2', ust: '+1.2', disi: false }, 'boş tolerans sınıftan gelir');
+assert.deepStrictEqual(kr({ dimension: '285', lowerTolerance: '-0,5', upperTolerance: '+0,5', tolElle: true }), { alt: '-0,5', ust: '+0,5', disi: true }, 'sonradan elle girilen korunur, kırmızı');
+assert.strictEqual(kr({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2', tolElle: true }).disi, false, 'elle ama sınıfa uygun');
+assert.deepStrictEqual(kr({ dimension: '285', lowerTolerance: '-7', upperTolerance: '+7' }), { alt: '-7', ust: '+7', disi: true }, 'hiçbir sınıfa uymayan eski kayıt elle sayılır');
+assert.deepStrictEqual(kr({ dimension: '285', tolElle: true }), { alt: undefined, ust: undefined, disi: false }, 'kullanıcı boşalttıysa boş kalır');
+assert.deepStrictEqual(kr({ dimension: 'Ra 3.2', lowerTolerance: '-1', upperTolerance: '+1', tolElle: true }), { alt: '-1', ust: '+1', disi: false }, 'sınıf karşılığı yok: kırmızı değil');
+assert.strictEqual(F.orToleransKarari({ dimension: '285', lowerTolerance: '-2', upperTolerance: '2' }).disi, false, 'standart verilmedi');
+assert.deepStrictEqual(F.orSatirlar([{ ad: 'A', olculer: [{ number: 1, dimension: '285', lowerTolerance: '-0.5', upperTolerance: '+0.5' }] }], std).map(s => [s.tolerans, s.sinir.alt, s.standartDisi]), [['± 1,2 mm', 283.8, false]], 'yazılan tolerans ve sınır sınıftan');
 
 // Çizimler Ref sırasına dizilir; çizim no yalnız grubun ilk satırında
 const iki = [{ ad: 'B', olculer: [{ number: 22, dimension: '5' }, { number: 21, dimension: '4' }] }, { ad: 'A', olculer: [{ number: 1, dimension: '3' }] }, { ad: 'BOS', olculer: [] }];
@@ -49,7 +58,7 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
 (async () => {
   // Kırmızı kurallar: L:N ölçüm sınırı, F yalnız standart dışında; önceki rapor şablon olsa da kural birikmez; başlıklar yazılır
   { const sab = await sablon();
-    const b = await F.orDoldur(JSZip, sab, [{ ad: 'C', olculer: [{ number: 1, dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, { number: 2, dimension: 'Ø27.5', lowerTolerance: '-2', upperTolerance: '2' }, { number: 3, dimension: '9' }] }], d => ({ alt: '-1.2', ust: '+1.2' }));
+    const b = await F.orDoldur(JSZip, sab, [{ ad: 'C', olculer: [{ number: 1, dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, { number: 2, dimension: 'Ø27.5', lowerTolerance: '-2', upperTolerance: '2' }, { number: 3, dimension: '9' }] }], { tolerans: d => (d === '9' ? {} : { alt: '-1.2', ust: '+1.2' }), sinifDegeriMi: o => o.dimension === '285' });
     const zk = await JSZip.loadAsync(b), xk = await zk.file('xl/worksheets/sheet2.xml').async('string');
     assert(xk.includes('sqref="L6:N6"') && xk.includes('sqref="L7:N7"') && !xk.includes('L8:N8'), 'ölçüm kuralı toleransı olan satırlarda');
     assert(xk.includes('&lt;283.8') && xk.includes('&gt;286.2') && xk.includes('&lt;25.5') && xk.includes('_xlfn.NUMBERVALUE'), 'sınırlar formülde');
@@ -96,6 +105,7 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
   await assert.rejects(() => F.orDoldur(JSZip, bosBayt, []), /ikinci sekme/);
   // Depoya gerçek şablon girmesin
   const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
+  assert(fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8').includes('tolElle: a.tolElle'), 'JSON kaydındaki elle tolerans işareti korunmalı');
   assert(html.includes('id="olcumRaporuBtn"') && html.includes('jszip/3.10.1') && html.includes('olcum-raporu.js?v='), 'sayfa kablolaması');
   assert(!fs.readdirSync(__dirname).some(f => /\.xlsx?$/i.test(f)), 'depoda Excel dosyası olmamalı (imza/kişi bilgisi)');
   console.log('✔ ölçüm raporu: biçim, sığan/sığmayan, çok çizim, kaydırma, kapak aynen — tüm kontroller geçti');

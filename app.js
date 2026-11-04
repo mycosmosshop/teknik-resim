@@ -1727,6 +1727,7 @@ async function endDrawing(e) {
                 annotation.dimension = parsed.dimension;
                 annotation.lowerTolerance = parsed.lowerTolerance || annotation.lowerTolerance;
                 annotation.upperTolerance = parsed.upperTolerance || annotation.upperTolerance;
+                annotation.tolElle = !!(parsed.lowerTolerance || parsed.upperTolerance);   // çizimde yazılı tolerans
                 
                 // Tolerans yoksa varsayılanları uygula
                 if (!parsed.lowerTolerance && !parsed.upperTolerance) {
@@ -1747,6 +1748,7 @@ async function endDrawing(e) {
             annotation.dimension = parsed.dimension;
             annotation.lowerTolerance = parsed.lowerTolerance || annotation.lowerTolerance;
             annotation.upperTolerance = parsed.upperTolerance || annotation.upperTolerance;
+            annotation.tolElle = !!(parsed.lowerTolerance || parsed.upperTolerance);   // çizimde yazılı tolerans
             
             // Tolerans yoksa varsayılanları uygula
             if (!parsed.lowerTolerance && !parsed.upperTolerance) {
@@ -2906,12 +2908,14 @@ function addTableRow(annotation) {
     
     document.getElementById(`lower-${annotation.id}`).addEventListener('change', (e) => {
         annotation.lowerTolerance = e.target.value;
+        annotation.tolElle = true;   // rapor: elle girilen tolerans sınıfa göre değişmez, uymuyorsa kırmızı
         updateLimits(annotation.id);
         updateCombinedTolerance(annotation.id);
     });
     
     document.getElementById(`upper-${annotation.id}`).addEventListener('change', (e) => {
         annotation.upperTolerance = e.target.value;
+        annotation.tolElle = true;
         updateLimits(annotation.id);
         updateCombinedTolerance(annotation.id);
     });
@@ -3163,6 +3167,11 @@ function applyDefaultTolerances(annotation) {
     }
     
     // Manuel yoksa tablodan otomatik uygula (seçili sınıfa göre)
+    tabloToleransUygula(annotation, activeToleranceClass);
+}
+
+// Tolerans tablosundan verilen sınıfın değeri (rapor penceresi de kullanır)
+function tabloToleransUygula(annotation, sinif) {
     const dimension = nominalDeger(annotation.dimension);
     // ISO 2768: 0,5 mm altı (ör. geometrik tolerans değeri 0,05) ve pürüzlülük (Ra/Rz = üst sınır) için genel tolerans yoktur
     if (/^\s*R[az]\s*\d/i.test(annotation.dimension) || dimension < 0.5) { annotation.lowerTolerance = ''; annotation.upperTolerance = ''; return; }
@@ -3172,7 +3181,7 @@ function applyDefaultTolerances(annotation) {
                 let tolerance, upperTolerance;
                 
                 // Manuel sınıfı seçiliyse alt ve üst ayrı değerler
-                if (activeToleranceClass === 'manual') {
+                if (sinif === 'manual') {
                     tolerance = range.manualLower;
                     upperTolerance = range.manualUpper;
                     
@@ -3189,7 +3198,7 @@ function applyDefaultTolerances(annotation) {
                     }
                 } else {
                     // Diğer sınıflar için simetrik tolerans
-                    tolerance = range[activeToleranceClass];
+                    tolerance = range[sinif];
                     if (tolerance) {
                         annotation.lowerTolerance = '-' + tolerance.toString().replace('.', ',');
                         annotation.upperTolerance = '+' + tolerance.toString().replace('.', ',');
@@ -3221,6 +3230,7 @@ function applyToleranceToAll() {
     annotations.forEach(annotation => {
         if (lower) annotation.lowerTolerance = lower;
         if (upper) annotation.upperTolerance = upper;
+        annotation.tolElle = true;
         
         // Tablodaki inputları güncelle
         const lowerField = document.getElementById(`lower-${annotation.id}`);
@@ -3243,7 +3253,8 @@ function clearAllTolerances() {
     annotations.forEach(annotation => {
         annotation.lowerTolerance = '';
         annotation.upperTolerance = '';
-        
+        annotation.tolElle = true;
+
         const lowerField = document.getElementById(`lower-${annotation.id}`);
         const upperField = document.getElementById(`upper-${annotation.id}`);
         
@@ -4618,6 +4629,7 @@ function saveToleranceTable() {
     annotations.forEach(annotation => {
         if (annotation.dimension) {
             applyDefaultTolerances(annotation);
+            annotation.tolElle = false;
             updateLimits(annotation.id);
             
             // Input alanlarını güncelle

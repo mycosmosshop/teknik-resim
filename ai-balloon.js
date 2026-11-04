@@ -655,7 +655,7 @@ async function autoBalloonAI() {
                 dimension: (p && p.dimension) || o.deger, lowerTolerance: (p && p.lowerTolerance) || '', upperTolerance: (p && p.upperTolerance) || '',
                 aiOkuma: true, aiAg: !!o.ag, aiKontrol: !!o.kontrol
             };
-            if (!ann.lowerTolerance && !ann.upperTolerance) applyDefaultTolerances(ann);
+            if (!ann.lowerTolerance && !ann.upperTolerance) applyDefaultTolerances(ann); else ann.tolElle = true;   // çizimde yazılı tolerans
             annotations.push(ann); addTableRow(ann); eklenen++;
         }
         balloonCounter += eklenen;
