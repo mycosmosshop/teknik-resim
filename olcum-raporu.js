@@ -2,6 +2,44 @@
 // Şablonda imza ve kişi bilgisi var, depo herkese açık: şablon koda/depoya girmez, kullanıcı seçer, yalnız tarayıcısında durur.
 // Tarayıcıda biçimi koruyarak yalnız .xlsx yazılabilir (JSZip ile XML'e değer yazılır; biçim, kapak, görsel, formül aynen kalır).
 const OR_SABLON_KEY = 'teknikresim_olcum_sablon';
+// Veri bu sekmeye girilir (elle ya da yapıştırarak); formdaki tablo hücreleri buradan formülle dolar ve kilitlidir.
+// Excel'de yapıştırma hedef hücrenin biçimini ve kırmızı kuralını siler, makrosuz başka önlemi yok.
+const OR_GIRIS = 'Ölçüm Girişi';
+const OR_GIRIS_BAS = 3;   // ilk veri satırı
+const OR_GIRIS_KOLON = { B: 'A', D: 'B', E: 'C', F: 'D', L: 'E', M: 'F', N: 'G' };   // form sütunu → giriş sütunu
+
+function orGirisSayfasi(veri, satirSayisi) {
+    const metin = (r, t) => '<c r="' + r + '" t="inlineStr"><is><t xml:space="preserve">' + orXml(t) + '</t></is></c>';
+    const deger = (r, v) => (v === '' || v == null ? '' : typeof v === 'number' ? '<c r="' + r + '"><v>' + v + '</v></c>' : metin(r, v));
+    const baslik = ['Ref. Nr.', 'Çizim No / Not', 'Nominal', 'Tolerans', '1. Ölçüm', '2. Ölçüm', '3. Ölçüm'];
+    let satirlar = '<row r="1">' + metin('A1', 'Ölçüleri buraya girin ya da yapıştırın; "ölçü" sekmesi buradan dolar ve uygun olmayanlar orada kırmızı yanar.') + '</row>'
+        + '<row r="2">' + baslik.map((b, i) => metin(String.fromCharCode(65 + i) + '2', b)).join('') + '</row>';
+    for (let i = 0; i < satirSayisi; i++) {
+        const v = veri[i] || {}, r = OR_GIRIS_BAS + i;
+        const h = deger('A' + r, v.ref) + deger('B' + r, v.cizim) + deger('C' + r, v.nominal) + deger('D' + r, v.tolerans);
+        if (h) satirlar += '<row r="' + r + '">' + h + '</row>';
+    }
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        + '<cols><col min="1" max="1" width="8" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="7" width="12" customWidth="1"/></cols>'
+        + '<sheetData>' + satirlar + '</sheetData></worksheet>';
+}
+// Hücre biçiminin kilitsiz kopyası (zaten kilitsizse aynısı). Dönüş: yeni stil metni + s → yeni s
+function orKilitsizler(stil, kullanilan) {
+    const m = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(stil), harita = {};
+    if (!m) return { stil, harita };
+    const xflar = m[1].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g) || [];
+    kullanilan.forEach(k => {
+        const x = xflar[k];
+        if (!x) return;
+        if (/locked="0"/.test(x)) { harita[k] = k; return; }
+        const t = x.replace(/\s*applyProtection="[^"]*"/, '').replace(/<protection\b[^>]*\/>/, '');
+        const y = /\/>$/.test(t) ? t.replace(/\/>$/, ' applyProtection="1"><protection locked="0"/></xf>') : t.replace(/^<xf\b[^>]*/, a => a + ' applyProtection="1"').replace('</xf>', '<protection locked="0"/></xf>');
+        harita[k] = xflar.length;
+        xflar.push(y);
+    });
+    return { stil: stil.replace(m[0], '<cellXfs count="' + xflar.length + '">' + xflar.join('') + '</cellXfs>'), harita };
+}
 
 function orKolon(c) { let n = 0; for (const h of c) n = n * 26 + h.charCodeAt(0) - 64; return n; }
 function orXml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -132,7 +170,7 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
 
     // İkinci sekmenin dosyası
     let wb = await oku('xl/workbook.xml');
-    const wbRels = await oku('xl/_rels/workbook.xml.rels');
+    let wbRels = await oku('xl/_rels/workbook.xml.rels');
     const sekmeler = [...wb.matchAll(/<sheet\b[^>]*?r:id="([^"]+)"/g)].map(m => m[1]);
     if (sekmeler.length < 2) throw new Error('Şablonda ikinci sekme yok.');
     const hedefi = id => new RegExp('<Relationship\\b[^>]*\\bId="' + id + '"[^>]*>').exec(wbRels)[0].match(/Target="([^"]+)"/)[1];
@@ -182,9 +220,14 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
         }
     }
 
-    // Tablo satırları: eski değerler silinir (biçim kalır), yenileri yazılır. Ölçümler (L, M, N) ve uygun/uygun değil boş kalır.
+    // Tablo satırları: değerler giriş sekmesine yazılır, form hücreleri oradan formülle dolar (biçim kalır).
+    // Ölçümler (L, M, N) ve uygun/uygun değil boş kalır.
     const hucre = (ref, s, deger) => {
         const st = s ? ' s="' + s + '"' : '';
+        if (deger && deger.formul) {
+            const d = deger.deger, sayi = typeof d === 'number';
+            return '<c r="' + ref + '"' + st + (sayi ? '' : ' t="str"') + '><f>' + orXml(deger.formul) + '</f><v>' + (d == null ? '' : orXml(d)) + '</v></c>';
+        }
         if (deger === '' || deger == null) return '<c r="' + ref + '"' + st + '/>';
         if (typeof deger === 'number') return '<c r="' + ref + '"' + st + '><v>' + deger + '</v></c>';
         return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + orXml(deger) + '</t></is></c>';
@@ -192,7 +235,11 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     xml = xml.replace(SATIR, r => {
         const n = satirNo(r);
         if (n < ilk || n > son + ek) return r;
-        const v = veri[n - ilk] || {}, yaz = { B: v.ref, D: v.cizim, E: v.nominal, F: v.tolerans };
+        const v = veri[n - ilk] || {}, kaynak = { B: v.ref, D: v.cizim, E: v.nominal, F: v.tolerans }, yaz = {};
+        Object.keys(OR_GIRIS_KOLON).forEach(k => {
+            const g = "'" + OR_GIRIS + "'!" + OR_GIRIS_KOLON[k] + (OR_GIRIS_BAS + n - ilk);
+            yaz[k] = { formul: 'IF(' + g + '="","",' + g + ')', deger: kaynak[k] === undefined ? '' : kaynak[k] };
+        });
         const acilis = /<row\b[^>]*?\/?>/.exec(r)[0].replace(/\/>$/, '>');
         const mevcut = {};
         (r.match(HUCRE) || []).forEach(c => { const k = /\br="([A-Z]+)\d+"/.exec(c)[1], s = /\bs="(\d+)"/.exec(c); mevcut[k] = s ? s[1] : ''; });
@@ -207,6 +254,32 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     // Koşullu biçim: önceki rapordan kalan tablo kuralları silinir (rapor şablon olarak seçilmiş olabilir), yenileri eklenir
     xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="([A-Z]+)(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, k, r) => (+r >= ilk && +r <= son + ek ? '' : m));
     let stil = await oku('xl/styles.xml');
+    // Yalnız tablo hücreleri kilitli kalır; imza, not, uygun/uygun değil vb. düzenlenebilir. Sayfa koruması şifresiz.
+    const tabloHucresi = c => { const m = /\br="([A-Z]+)(\d+)"/.exec(c); return m[1] in OR_GIRIS_KOLON && +m[2] >= ilk && +m[2] <= son + ek; };
+    const sd0 = xml.indexOf('<sheetData'), sd1 = xml.indexOf('</sheetData>');
+    const kullanilan = new Set();
+    (xml.slice(sd0, sd1).match(HUCRE) || []).forEach(c => { if (!tabloHucresi(c)) { const m = /\bs="(\d+)"/.exec(c.slice(0, c.indexOf('>'))); kullanilan.add(m ? +m[1] : 0); } });
+    const kilit = orKilitsizler(stil, kullanilan);
+    stil = kilit.stil;
+    xml = xml.slice(0, sd0) + xml.slice(sd0, sd1).replace(HUCRE, c => {
+        if (tabloHucresi(c)) return c;
+        const m = /\bs="(\d+)"/.exec(c.slice(0, c.indexOf('>'))), yeni = kilit.harita[m ? +m[1] : 0];
+        if (yeni === undefined) return c;
+        return m ? c.replace(/\bs="\d+"/, 's="' + yeni + '"') : c.replace(/^<c\b/, '<c s="' + yeni + '"');
+    }) + xml.slice(sd1);
+    xml = xml.replace(/<sheetProtection\b[^>]*\/>/, '').replace('</sheetData>', '</sheetData><sheetProtection sheet="1" objects="1" scenarios="1"/>');
+    // Giriş sekmesi: yoksa eklenir, önceki rapor şablon seçildiyse yenilenir
+    let girisYol = null;
+    const girisEs = new RegExp('<sheet\\b[^>]*name="' + OR_GIRIS + '"[^>]*r:id="([^"]+)"').exec(wb);
+    if (girisEs) girisYol = 'xl/' + hedefi(girisEs[1]).replace(/^\/?xl\//, '');
+    else {
+        girisYol = 'xl/worksheets/olcum_giris.xml';
+        const kim = Math.max(0, ...[...wb.matchAll(/\bsheetId="(\d+)"/g)].map(m => +m[1])) + 1;
+        wb = wb.replace('</sheets>', '<sheet name="' + OR_GIRIS + '" sheetId="' + kim + '" r:id="rIdGiris"/></sheets>');
+        wbRels = wbRels.replace('</Relationships>', '<Relationship Id="rIdGiris" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/olcum_giris.xml"/></Relationships>');
+        zip.file('[Content_Types].xml', (await oku('[Content_Types].xml')).replace('</Types>', '<Override PartName="/xl/worksheets/olcum_giris.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'));
+    }
+    zip.file(girisYol, orGirisSayfasi(veri, son + ek - ilk + 1));
     const dxfSayi = /<dxfs\b[^>]*count="(\d+)"/.exec(stil), dxf = dxfSayi ? +dxfSayi[1] : 0;
     const kirmizi = '<dxf><font><b/><color rgb="FFFFFFFF"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor rgb="FFFF0000"/></patternFill></fill></dxf>';
     stil = /<dxfs\b[^>]*\/>/.test(stil) ? stil.replace(/<dxfs\b[^>]*\/>/, '<dxfs count="1">' + kirmizi + '</dxfs>')
@@ -222,8 +295,9 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     if (zip.file('xl/calcChain.xml')) {
         zip.remove('xl/calcChain.xml');
         zip.file('[Content_Types].xml', (await oku('[Content_Types].xml')).replace(/<Override\b[^>]*calcChain[^>]*\/>/, ''));
-        zip.file('xl/_rels/workbook.xml.rels', wbRels.replace(/<Relationship\b[^>]*calcChain[^>]*\/>/, ''));
+        wbRels = wbRels.replace(/<Relationship\b[^>]*calcChain[^>]*\/>/, '');
     }
+    zip.file('xl/_rels/workbook.xml.rels', wbRels);
     wb = /<calcPr\b/.test(wb) ? wb.replace(/<calcPr\b([^>]*?)\/>/, (m, a) => '<calcPr' + a.replace(/\s*fullCalcOnLoad="[^"]*"/, '') + ' fullCalcOnLoad="1"/>')
         : wb.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
     zip.file('xl/workbook.xml', wb);

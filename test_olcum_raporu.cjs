@@ -44,7 +44,7 @@ async function sablon() {
   z.file('xl/workbook.xml', '<workbook><sheets><sheet name="kapak" sheetId="1" r:id="rId1"/><sheet name="olcu" sheetId="2" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">kapak!$A$1:$B$2</definedName><definedName name="_xlnm.Print_Area" localSheetId="1">olcu!$A$1:$T$12</definedName></definedNames><calcPr calcId="1"/></workbook>');
   z.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId9" Target="calcChain.xml" Type="calcChain"/></Relationships>');
   z.file('xl/calcChain.xml', '<calcChain/>');
-  z.file('xl/styles.xml', '<styleSheet><cellStyles/><dxfs count="0"/></styleSheet>');
+  z.file('xl/styles.xml', '<styleSheet><cellXfs count="10">' + '<xf numFmtId="0"/>'.repeat(10) + '</cellXfs><cellStyles/><dxfs count="0"/></styleSheet>');
   z.file('xl/sharedStrings.xml', '<sst><si><t>Nr.</t></si><si><t>Tedarikci Onayı:</t></si><si><t>Sabit</t></si></sst>');
   z.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData></worksheet>');
   z.file('xl/worksheets/sheet2.xml', `<worksheet><dimension ref="A1:T12"/><sheetData>${sat(5, 1, 0)}${sat(6, 7)}${sat(7, 7)}${sat(8, 7)}${sat(9, 8)}${sat(10, 9, 1)}<row r="11"><c r="E11"><f>kapak!A1</f><v>7</v></c></row><row r="12"><c r="A12" t="s"><v>2</v></c></row></sheetData><mergeCells count="2"><mergeCell ref="A12:D12"/><mergeCell ref="B5:C5"/></mergeCells><hyperlinks><hyperlink ref="E11" r:id="rId1"/></hyperlinks><drawing r:id="rId3"/></worksheet>`);
@@ -77,11 +77,27 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
   // Sığan: biçim kalır, eski değerler (L dahil) silinir, alt bölüm yerinde
   let z = await JSZip.loadAsync(await F.orDoldur(JSZip, await sablon(), [{ ad: 'C-1', olculer: olc(2) }]));
   let x = await z.file('xl/worksheets/sheet2.xml').async('string');
-  assert(satir(x, 6).includes('<c r="B6" s="7"><v>1</v></c>') && satir(x, 6).includes('<c r="D6" s="2" t="inlineStr"><is><t xml:space="preserve">C-1</t>'), 'ilk satır: ' + satir(x, 6));
-  assert(satir(x, 6).includes('<c r="E6" s="3"><v>10</v></c>') && satir(x, 6).includes('± 0,5 mm'), 'nominal/tolerans');
+  assert(satir(x, 6).includes(`<c r="B6" s="7"><f>IF('Ölçüm Girişi'!A3="","",'Ölçüm Girişi'!A3)</f><v>1</v></c>`), 'form hücresi girişten formül, biçim aynı: ' + satir(x, 6));
+  assert(satir(x, 6).includes('<c r="D6" s="2" t="str"><f>') && satir(x, 6).includes('<v>C-1</v>'), 'çizim no');
+  assert(satir(x, 6).includes('<c r="E6" s="3"><f>') && satir(x, 6).includes('<v>10</v>') && satir(x, 6).includes('± 0,5 mm'), 'nominal/tolerans');
   assert(satir(x, 7).includes('Ø1,5') && !satir(x, 7).includes('C-1'), 'çizim no yalnız ilk satırda');
-  assert(satir(x, 6).includes('<c r="L6" s="5"/>') && satir(x, 8).includes('<c r="B8" s="7"/>'), 'L ve kalan satırlar boş, biçim duruyor');
-  assert(satir(x, 10).includes('r="B10" s="9" t="s"'), 'alt bölüm yerinde');
+  assert(satir(x, 6).includes('<c r="L6" s="5" t="str"><f>') && !satir(x, 6).includes('999') && satir(x, 8).includes("'Ölçüm Girişi'!A5"), 'L girişten, eski değer yok, boş satır da bağlı');
+  assert(/r="B10" s="\d+" t="s"/.test(satir(x, 10)), 'alt bölüm yerinde');
+  // Giriş sekmesi + kilit: tablo kilitli, gerisi değil; ikinci üretimde sekme çoğalmaz
+  { const g = await z.file('xl/worksheets/olcum_giris.xml').async('string');
+    assert(g.includes('<row r="3"><c r="A3"><v>1</v></c>') && g.includes('C-1') && g.includes('<c r="C3"><v>10</v></c>') && g.includes('Ø1,5'), 'giriş verisi');
+    assert((await z.file('xl/workbook.xml').async('string')).includes('name="Ölçüm Girişi"') && (await z.file('[Content_Types].xml').async('string')).includes('olcum_giris.xml') && (await z.file('xl/_rels/workbook.xml.rels').async('string')).includes('rIdGiris'), 'sekme kayıtları');
+    assert(x.indexOf('<sheetProtection') === x.indexOf('</sheetData>') + '</sheetData>'.length, 'koruma doğru yerde');
+    const st = await z.file('xl/styles.xml').async('string');
+    assert(/<cellXfs count="\d+">/.test(st) && st.includes('<protection locked="0"/>'), 'kilitsiz biçimler');
+    const sA = +/<c r="A6" s="(\d+)"/.exec(x)[1], sO = +/<c r="O6" s="(\d+)"/.exec(x)[1], xf = st.match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g);
+    assert(/locked="0"/.test(xf[sA]) && /locked="0"/.test(xf[sO]) && !/locked="0"/.test(xf[7]), 'A/O kilitsiz, B tablo hücresi kilitli');
+    const bytes = await z.generateAsync({ type: 'uint8array' });
+    const z2 = await JSZip.loadAsync(await F.orDoldur(JSZip, bytes, [{ ad: 'C-2', olculer: olc(1) }]));
+    const wb2 = await z2.file('xl/workbook.xml').async('string'), x3 = await z2.file('xl/worksheets/sheet2.xml').async('string');
+    assert.strictEqual((wb2.match(/Ölçüm Girişi/g) || []).length, 1, 'sekme çoğalmamalı'); assert.strictEqual((x3.match(/<sheetProtection/g) || []).length, 1, 'koruma çoğalmamalı');
+    assert((await z2.file('xl/worksheets/olcum_giris.xml').async('string')).includes('C-2') && !(await z2.file('xl/worksheets/olcum_giris.xml').async('string')).includes('C-1'), 'giriş yenilenir');
+  }
   assert(satir(x, 5).includes('<v>999</v>'), 'başlık satırı değişmemeli');
   assert(/<mergeCell ref="A12:D12"\/>/.test(x), 'birleşik yerinde');
   assert.strictEqual(await z.file('xl/worksheets/sheet1.xml').async('string'), '<worksheet><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData></worksheet>', 'kapak değişmemeli');
@@ -93,10 +109,10 @@ const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas +
   x = await z.file('xl/worksheets/sheet2.xml').async('string');
   const nolar = [...x.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => +m[1]);
   assert.deepStrictEqual(nolar, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 'satır sırası bozulmamalı: ' + nolar);
-  assert(satir(x, 10).includes('<c r="B10" s="7"><v>21</v></c>') && satir(x, 10).includes('C-2'), 'ikinci çizim eklenen satırda: ' + satir(x, 10));
-  assert(satir(x, 12).includes('<c r="B12" s="8"><v>23</v></c>'), 'son ölçü alt çerçeveli satırda: ' + satir(x, 12));
-  assert(satir(x, 13).includes('r="B13" s="9" t="s"'), 'alt bölüm kaydı');
-  assert(satir(x, 14).includes('<c r="E14"><f>kapak!A1</f>'), 'formül satırı kaydı, kapak başvurusu aynı');
+  assert(satir(x, 10).includes('<c r="B10" s="7"><f>') && satir(x, 10).includes('<v>21</v>') && satir(x, 10).includes('C-2'), 'ikinci çizim eklenen satırda: ' + satir(x, 10));
+  assert(satir(x, 12).includes('<c r="B12" s="8"><f>') && satir(x, 12).includes('<v>23</v>'), 'son ölçü alt çerçeveli satırda: ' + satir(x, 12));
+  assert(/r="B13" s="\d+" t="s"/.test(satir(x, 13)), 'alt bölüm kaydı');
+  assert(satir(x, 14).includes('<f>kapak!A1</f>') && satir(x, 14).includes('r="E14"'), 'formül satırı kaydı, kapak başvurusu aynı');
   assert(x.includes('<mergeCell ref="A15:D15"/>') && x.includes('<mergeCell ref="B5:C5"/>') && x.includes('<hyperlink ref="E14"') && x.includes('<dimension ref="A1:T15"'), 'birleşik/bağlantı/boyut kaymalı');
   const wb = await z.file('xl/workbook.xml').async('string');
   assert(wb.includes('olcu!$A$1:$T$15') && wb.includes('kapak!$A$1:$B$2'), 'baskı alanı yalnız ikinci sekmede: ' + wb);
