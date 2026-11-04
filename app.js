@@ -327,8 +327,9 @@ function setupEventListeners() {
         console.log('📝 Yazı rengi değiştirildi:', currentTextColor);
     });
     
+    currentFillType = fillTypeSelect.value;
     fillTypeSelect.addEventListener('change', (e) => {
-        currentFillType = e.target.value;
+        balonDolgusuUygula(e.target.value);
         console.log('🔳 Dolgu tipi değiştirildi:', currentFillType);
     });
     
@@ -3551,6 +3552,13 @@ function undoLastAnnotation() {
     }
 }
 
+// Dolgu tüm balonlara uygulanır: kutudaki seçim ile çizimdeki balon ayrışmasın
+function balonDolgusuUygula(tip) {
+    currentFillType = tip;
+    annotations.forEach(a => { a.fillType = tip; });
+    if (annotations.length) redrawCanvas();
+}
+
 function resetToDefaults() {
     // Tüm ayarları varsayılan değerlerine döndür
     
@@ -3576,6 +3584,18 @@ function resetToDefaults() {
     if (fontFamilySelect) {
         fontFamilySelect.value = 'Arial';
     }
+
+    // Kutular kadar çizimde kullanılan değerler de döner (kutuda "Dolu" yazıp balon boş çıkıyordu)
+    currentBalloonShape = 'circle';
+    currentBalloonColor = '#3498db';
+    currentBalloonSize = 20;
+    currentBalloonTextSize = 16;
+    currentLineColor = '#2c3e50';
+    currentTextColor = '#ffffff';
+    currentTextSize = 16;
+    currentTextBox = 'none';
+    currentFontFamily = 'Arial';
+    balonDolgusuUygula('filled');
     
     showNotification('Ayarlar varsayılana döndürüldü', 'success');
     console.log('✅ Tüm ayarlar varsayılan değerlere döndürüldü');
@@ -4979,6 +4999,11 @@ function loadBackupFile(file) {
                 if (!ann.balloonTextSize) ann.balloonTextSize = 16;
                 if (!ann.fontFamily) ann.fontFamily = 'Arial';
             });
+            // Kayıttaki dolgu kutuda görünsün (kutu "Dolu" derken kayıt "Boş" gelmesin; değiştirince hepsine uygulanır)
+            if (annotations.length && annotations.every(a => a.fillType === annotations[0].fillType)) {
+                currentFillType = annotations[0].fillType;
+                document.getElementById('fillTypeSelect').value = currentFillType;
+            }
 
             // Başlangıç seçildiyse kayıt ona kayar; seçilmediyse kutu kaydın başlangıcını gösterir (sonraki sıralamalar kaydı 1'e çekmesin)
             if (annotations.length) {

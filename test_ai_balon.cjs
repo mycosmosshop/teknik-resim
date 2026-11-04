@@ -130,7 +130,7 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
       let baslangicElle = false, balloonCounter = 1, textAnnotations = [], currentImage = null, imageLoaded = false, sonBildirim = '', tablo = 0;
       let annotations = numaralar.map((n, i) => ({ id: i + 1, number: n, rect: { x: 100 * i, y: 50, width: 40, height: 20 }, balloon: { x: 100 * i, y: 10 } }));
       const canvas = { width: 800, height: 600 }, autoNumberDirectionSelect = { value: yon };
-      const document = { getElementById: id => id === 'startNumberInput' ? girdi : id === 'tableBody' ? { innerHTML: '' } : null };
+      const document = { getElementById: id => id === 'startNumberInput' ? girdi : id === 'tableBody' ? { innerHTML: '' } : {} };
       const showNotification = m => { sonBildirim = m; }, redrawCanvas = () => { }, rebuildTable = () => { tablo++; }, addTableRow = () => { }, fitToScreen = () => { }, alert = m => { throw new Error(m); };
       const console = { log() { }, warn() { }, error(e) { throw e; } }; const window = {};
       class FileReader { readAsText(f) { this.onload({ target: { result: f } }); } }
@@ -158,6 +158,22 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   c.renumberAnnotations(); assert.deepStrictEqual(c.no(), [40, 41], 'kayıt 1\'e çekilmemeli');
   c.girdi.value = '100'; c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [100, 101], 'yüklenen kayıtta Uygula');
   assert(app.includes("addEventListener('change', () => {\n        baslangicElle = true;"), 'kutu değişimi seçim sayılmalı');
+}
+// 7c) Dolgu: "Varsayılana dön" çizimde kullanılan değeri de döndürür; seçim mevcut balonlara uygulanır
+{ const app = fs.readFileSync(__dirname + '/app.js', 'utf8');
+  const govde = ad => { const i = app.indexOf('function ' + ad + '('); assert(i >= 0, ad); return app.slice(i, app.indexOf('\n}', i) + 2); };
+  const dolgu = new Function(`
+    let currentFillType = 'empty', currentBalloonShape = 'square', currentBalloonColor = 'x', currentBalloonSize = 9, currentBalloonTextSize = 9, currentLineColor = 'x', currentTextColor = 'x', currentTextSize = 9, currentTextBox = 'x', currentFontFamily = 'x';
+    let annotations = [{ fillType: 'empty' }, { fillType: 'empty' }], baslangicElle = true, balloonCounter = 3, ciz = 0;
+    const redrawCanvas = () => { ciz++; }, showNotification = () => { }, console = { log() { } };
+    const kutu = {}, document = { getElementById: id => (kutu[id] = kutu[id] || { value: '' }) };
+    ${govde('balonDolgusuUygula')}\n${govde('resetToDefaults')}
+    return { resetToDefaults, balonDolgusuUygula, dolgu: () => currentFillType, renk: () => currentBalloonColor, yazi: () => currentTextColor, an: () => annotations.map(a => a.fillType), ciz: () => ciz, kutu };`)();
+  dolgu.resetToDefaults();
+  assert.strictEqual(dolgu.dolgu(), 'filled', 'varsayılana dön: kutuda Dolu, değer de dolu olmalı'); assert.strictEqual(dolgu.kutu.fillTypeSelect.value, 'filled');
+  assert.strictEqual(dolgu.renk(), '#3498db'); assert.strictEqual(dolgu.yazi(), '#ffffff', 'dolu balonda beyaz yazı korunmalı');
+  assert.deepStrictEqual(dolgu.an(), ['filled', 'filled'], 'mevcut balonlar dolmalı'); assert(dolgu.ciz() >= 1, 'yeniden çizim');
+  dolgu.balonDolgusuUygula('empty'); assert.deepStrictEqual(dolgu.an(), ['empty', 'empty'], 'seçim tüm balonlara');
 }
 // 8) Ctrl+tekerlek zoom: adim hareketle orantili ve sinirli (tek event en cok ~%16) — sabit x1.1 katlanmasi kalkti
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf("canvas.addEventListener('wheel'"); const g = app.slice(i, app.indexOf('}, { passive: false });', i));
