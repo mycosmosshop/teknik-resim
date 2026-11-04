@@ -99,6 +99,8 @@ assert(iApp > 0 && iApp < iAi, 'ai-balloon.js app.js\'den sonra yüklenmeli');
 // önbellek kırıcı: iki script de aynı ?v= sürümünü taşımalı (yayında artırılır)
 const vApp = /app\.js\?v=([^"]+)"/.exec(html), vAi = /ai-balloon\.js\?v=([^"]+)"/.exec(html);
 assert(vApp && vAi && vApp[1] === vAi[1], 'app.js ve ai-balloon.js ?v= sürümleri aynı olmalı');
+assert((/style\.css\?v=([^"]+)"/.exec(html) || [])[1] === vApp[1], 'style.css ?v= de aynı olmalı: yoksa tarayıcı eski stille açılır');
+assert(!html.includes('draggable-toolbar') && html.includes('id="ustCubuk"') && html.includes('id="yanPanel"'), 'sabit düzen');
 assert(api.includes('id="geminiKey"') && api.includes("localStorage.setItem('ocr_gemini_key'") && api.includes("localStorage.getItem('ocr_gemini_key')"), 'API sayfası Gemini kartı');
 assert(!/AIza[0-9A-Za-z_-]{20,}/.test(js + html + api), 'kaynakta API anahtarı olmamalı');
 assert(js.includes('responseMimeType') && js.includes("'gemini-3.5-flash-lite'") && js.includes('ÖLÇÜLER 90 DERECE'), 'istem/model');
@@ -157,7 +159,7 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   c = yeni([], 1); c.loadBackupFile(kayit40); assert.strictEqual(c.girdi.value, 40, 'kutu kaydın başlangıcını göstermeli'); assert.deepStrictEqual(c.no(), [40, 41]);
   c.renumberAnnotations(); assert.deepStrictEqual(c.no(), [40, 41], 'kayıt 1\'e çekilmemeli');
   c.girdi.value = '100'; c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [100, 101], 'yüklenen kayıtta Uygula');
-  assert(app.includes("addEventListener('change', () => {\n        baslangicElle = true;"), 'kutu değişimi seçim sayılmalı');
+  assert(app.replace(/\r\n/g, '\n').includes("addEventListener('change', () => {\n        baslangicElle = true;"), 'kutu değişimi seçim sayılmalı');
 }
 // 7c) Balon ayarları sonradan değişir: kutu → çizilmiş balonlar; varsayılana dön; JSON kutuları eşitler; turuncu balon korunur
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8');

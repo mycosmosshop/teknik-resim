@@ -603,7 +603,7 @@ async function autoBalloonAI() {
     const ayar = aiAyar();
     if (!ayar.key) { alert('Gemini API anahtarı girilmemiş.\n\n⚙️ API sayfasında "Gemini (Otomatik Balonlama)" kartına anahtarı yazıp kaydedin.'); window.open('api-setup.html', '_blank'); return; }
     if (annotations.length && !confirm('Mevcut ' + annotations.length + ' balon korunur, otomatik bulunanlar üstüne eklenir. Devam?')) return;
-    const btn = document.getElementById('autoBalloonBtn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Okunuyor…'; }
+    const btn = document.getElementById('autoBalloonBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Okunuyor…'; }
     AI_BALON.iptal = false; AI_BALON.mi = 0; showLoading(true);
     try {
         // okuma kaynağı: en yüksek çözünürlük (PDF yeniden çizim / görüntünün doğal boyutu); balonlar canvas uzayında
@@ -669,7 +669,7 @@ async function autoBalloonAI() {
     } catch (e) {
         console.error(e); aiDurum('Otomatik balonlama hatası: ' + e.message, 'err');
     } finally {
-        showLoading(false); if (btn) { btn.disabled = false; btn.textContent = '🤖 Otomatik Balonla'; }
+        showLoading(false); if (btn) { btn.disabled = false; btn.textContent = 'Otomatik Balonla'; }
     }
 }
 

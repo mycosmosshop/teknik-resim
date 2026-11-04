@@ -11,7 +11,7 @@
     <!-- Favicon - SVG Balon İkonu -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233498db'/%3E%3Cstop offset='100%25' style='stop-color:%232980b9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='5' y='65' width='90' height='25' rx='2' fill='%2395a5a6' stroke='%232c3e50' stroke-width='2'/%3E%3Ccircle cx='50' cy='35' r='25' fill='url(%23g)' stroke='%23ffffff' stroke-width='2.5'/%3E%3Ctext x='50' y='44' font-family='Arial,sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle'%3E1%3C/text%3E%3Cline x1='50' y1='60' x2='50' y2='78' stroke='%232c3e50' stroke-width='3'/%3E%3Cpolygon points='46,76 50,82 54,76' fill='%232c3e50'/%3E%3C/svg%3E">
     
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20261104p">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -20,225 +20,43 @@
 </head>
 <body>
     <div class="container">
-        <header style="padding-bottom: 10px;">
-            <svg width="60" height="60" viewBox="0 0 100 100" style="vertical-align: middle; margin-right: 15px;">
-                <defs>
-                    <linearGradient id="balloonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style="stop-color:#3498db"/>
-                        <stop offset="100%" style="stop-color:#2980b9"/>
-                    </linearGradient>
-                </defs>
-                <!-- Teknik çizim (dikdörtgen) -->
-                <rect x="5" y="65" width="90" height="25" rx="2" fill="#95a5a6" stroke="#2c3e50" stroke-width="2"/>
-                <!-- Balon -->
-                <circle cx="50" cy="35" r="25" fill="url(#balloonGrad)" stroke="#ffffff" stroke-width="2.5"/>
-                <text x="50" y="44" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">1</text>
-                <!-- Ok çizgisi -->
-                <line x1="50" y1="60" x2="50" y2="78" stroke="#ffffff" stroke-width="3"/>
-                <!-- Ok ucu -->
-                <polygon points="46,76 50,82 54,76" fill="#ffffff"/>
-            </svg>
-            <h1 style="display: inline; vertical-align: middle;">Teknik Resim Balon Numaralandırma</h1>
-        </header>
-        
-        <!-- Sürüklenebilir Araç Çubukları -->
-        <div id="toolbarsContainer">
-            
-            <!-- Bar 1: Dosya & Araçlar - Üst Sol (DİKEY) -->
-            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="10" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 100;">
-                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">📁 DOSYA & ARAÇLAR</div>
-                <div class="toolbar-content" data-content style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <label for="fileInput" class="file-label" style="padding: 8px 16px; background: rgba(255,255,255,0.9); color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        Dosya Yükle
-                    </label>
-                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,image/tiff" style="display: none;" />
-                    <a href="api-setup.html" class="btn btn-warning" style="text-decoration: none; padding: 8px 16px; font-size: 13px;" target="_blank">⚙️ API</a>
-                    <button id="autoBalloonBtn" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px;" title="Gemini görme modeli ile ölçüleri bulup balonlar, sonra hizalar (manuel balonlama aynen kullanılabilir)">🤖 Otomatik Balonla</button>
-                    <button id="autoAlignBtn" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">🎯 Hizala</button>
-                    <button id="addTextBtn" class="btn btn-info" style="padding: 8px 16px; font-size: 13px;">📝 Metin</button>
-                    <button id="addLineBtn" class="btn btn-success" style="padding: 8px 16px; font-size: 13px;">📍 Çizgi</button>
-                </div>
+        <!-- Üst çubuk: işlemler. Sabit; sığmazsa ikinci satıra iner -->
+        <div class="ust-cubuk" id="ustCubuk">
+            <button id="panelBtn" class="tb tb-ikon" data-i="panel" type="button" title="Ayar panelini aç/kapat" aria-label="Ayar panelini aç/kapat" aria-expanded="true"></button>
+            <h1 class="uygulama-adi" title="Teknik Resim Balon Numaralandırma">Teknik Resim</h1>
+            <div class="grup">
+                <label for="fileInput" class="tb" data-i="upload">Dosya Yükle</label>
+                <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,image/tiff" style="display: none;" />
+                <button id="autoBalloonBtn" class="tb tb-ana" data-i="auto" title="Gemini görme modeli ile ölçüleri bulup balonlar, sonra hizalar (manuel balonlama aynen kullanılabilir)">Otomatik Balonla</button>
+                <button id="autoAlignBtn" class="tb" data-i="align">Hizala</button>
+                <button id="addTextBtn" class="tb" data-i="text">Metin</button>
+                <button id="addLineBtn" class="tb" data-i="line">Çizgi</button>
+                <button id="undoBtn" class="tb tb-ikon" data-i="undo" title="Geri al" aria-label="Geri al"></button>
             </div>
-            
-            <!-- Bar 2: Balon Ayarları - Sol Alt (DİKEY) -->
-            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="200" style="background: rgba(52, 152, 219, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 101;">
-                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">🎯 BALON AYARLARI</div>
-                <div class="toolbar-content" data-content style="display: flex; gap: 8px; flex-wrap: wrap; max-width: 900px;">
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Şekil:</label>
-                        <select id="balloonShapeSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="circle">⚫ Daire</option>
-                            <option value="square">⬛ Kare</option>
-                            <option value="triangle">🔺 Üçgen</option>
-                            <option value="pentagon">⬠ Beşgen</option>
-                            <option value="hexagon">⬡ Altıgen</option>
-                            <option value="octagon">⯃ Sekizgen</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Renk:</label>
-                        <select id="balloonColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="#3498db" selected>🔵 Mavi</option>
-                            <option value="#e74c3c">🔴 Kırmızı</option>
-                            <option value="#2ecc71">🟢 Yeşil</option>
-                            <option value="#f1c40f">🟡 Sarı</option>
-                            <option value="#9b59b6">🟣 Mor</option>
-                            <option value="#2c3e50">⚫ Lacivert</option>
-                            <option value="#1a1a1a">⚫ Siyah</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Boyut:</label>
-                        <input type="number" id="balloonSizeInput" min="10" max="50" value="20" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Yazı:</label>
-                        <input type="number" id="balloonTextSizeInput" min="8" max="32" value="16" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Dolgu:</label>
-                        <select id="fillTypeSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="filled" selected>🔴 Dolu</option>
-                            <option value="empty">⚪ Boş</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Başlangıç:</label>
-                        <input type="number" id="startNumberInput" min="1" value="1" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
-                        <button id="setStartNumberBtn" class="btn btn-info" style="padding: 5px 10px; font-size: 11px;">✓</button>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Oto Sıralama:</label>
-                        <select id="autoNumberDirectionSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="none" selected>Yok</option>
-                            <option value="left-right">← → Soldan Sağa</option>
-                            <option value="right-left">→ ← Sağdan Sola</option>
-                            <option value="top-bottom">↑ ↓ Yukarıdan Aşağı</option>
-                            <option value="bottom-top">↓ ↑ Aşağıdan Yukarı</option>
-                            <option value="clockwise">🔄 Saat Yönü</option>
-                            <option value="counter-clockwise">🔃 Saat Yönü Tersi</option>
-                        </select>
-                        <button id="applyAutoNumberBtn" class="btn btn-success" style="padding: 5px 10px; font-size: 11px;" title="Otomatik numaralandırmayı uygula">🔢 Uygula</button>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px; cursor: pointer;" title="Bir balon silinince kalanlar seçili sıralama yönüne göre (yön seçili değilse konuma göre) yeniden numaralanır">
-                            <input type="checkbox" id="renumberOnDelete" checked> Silince yeniden numarala
-                        </label>
-                    </div>
-                </div>
+            <div class="grup">
+                <button id="zoomInBtn" class="tb tb-ikon" data-i="zoomin" title="Yakınlaştır" aria-label="Yakınlaştır"></button>
+                <span id="zoomLevel">100%</span>
+                <button id="zoomOutBtn" class="tb tb-ikon" data-i="zoomout" title="Uzaklaştır" aria-label="Uzaklaştır"></button>
+                <button id="zoomResetBtn" class="tb" data-i="fit" title="Ekrana Sığdır">Sığdır</button>
             </div>
-            
-            <!-- Bar 3: Renk Ayarları - Sol Orta Alt (DİKEY) -->
-            <div class="draggable-toolbar" data-initial-x="5" data-initial-y="390" style="background: rgba(46, 204, 113, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 102;">
-                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">🎨 RENK AYARLARI</div>
-                <div class="toolbar-content" data-content style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Çizgi:</label>
-                        <select id="lineColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="#2c3e50" selected>⚫ Siyah</option>
-                            <option value="#e74c3c">🔴 Kırmızı</option>
-                            <option value="#3498db">🔵 Mavi</option>
-                            <option value="#2ecc71">🟢 Yeşil</option>
-                            <option value="#f39c12">🟡 Sarı</option>
-                            <option value="#9b59b6">🟣 Mor</option>
-                            <option value="#ffffff">⚪ Beyaz</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Numara:</label>
-                        <select id="textColorSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="#000000">⚫ Siyah</option>
-                            <option value="#ffffff" selected>⚪ Beyaz</option>
-                            <option value="#e74c3c">🔴 Kırmızı</option>
-                            <option value="#3498db">🔵 Mavi</option>
-                            <option value="#2ecc71">🟢 Yeşil</option>
-                            <option value="#f1c40f">🟡 Sarı</option>
-                            <option value="#9b59b6">🟣 Mor</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Metin:</label>
-                        <select id="metinRenkSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="#000000" selected>⚫ Siyah</option>
-                            <option value="#ffffff">⚪ Beyaz</option>
-                            <option value="#e74c3c">🔴 Kırmızı</option>
-                            <option value="#3498db">🔵 Mavi</option>
-                            <option value="#2ecc71">🟢 Yeşil</option>
-                            <option value="#f1c40f">🟡 Sarı</option>
-                            <option value="#9b59b6">🟣 Mor</option>
-                        </select>
-                    </div>
-                </div>
+            <div class="grup">
+                <button id="saveBackupBtn" class="tb" data-i="save">JSON Yedekle</button>
+                <label for="backupFileInput" class="tb" data-i="folder">JSON Yükle</label>
+                <input type="file" id="backupFileInput" accept=".json" style="display: none;" />
             </div>
-            
-            <!-- Bar 4: Metin Ayarları - Sağ -->
-            <div class="draggable-toolbar" data-initial-x="1350" data-initial-y="280" style="background: rgba(155, 89, 182, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 103;">
-                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">📝 METİN AYARLARI</div>
-                <div class="toolbar-content" data-content style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Boyut:</label>
-                        <input type="number" id="textSizeInput" min="8" max="72" value="16" style="width: 50px; padding: 5px; border-radius: 4px; font-size: 12px;">
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Kutu:</label>
-                        <select id="textBoxSelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="none" selected>Yok</option>
-                            <option value="box">⬜ Kutulu</option>
-                        </select>
-                    </div>
-                    <div style="display: inline-flex; align-items: center; gap: 5px;">
-                        <label style="font-weight: bold; color: white; font-size: 12px;">Stil:</label>
-                        <select id="fontFamilySelect" style="padding: 5px 8px; border-radius: 4px; font-size: 12px;">
-                            <option value="Arial" selected>Arial</option>
-                            <option value="Arial Black">Arial Black</option>
-                            <option value="Verdana">Verdana</option>
-                            <option value="Tahoma">Tahoma</option>
-                            <option value="Trebuchet MS">Trebuchet MS</option>
-                            <option value="Impact">Impact</option>
-                            <option value="Times New Roman">Times New Roman</option>
-                            <option value="Georgia">Georgia</option>
-                            <option value="Courier New">Courier New</option>
-                            <option value="Segoe UI">Segoe UI</option>
-                            <option value="Roboto">Roboto</option>
-                            <option value="Calibri">Calibri</option>
-                        </select>
-                    </div>
-                </div>
+            <div class="grup">
+                <button id="exportBtn" class="tb" data-i="image">PNG</button>
+                <button id="exportPdfBtn" class="tb" data-i="file">PDF</button>
+                <button id="exportExcelBtn" class="tb" data-i="table">Excel</button>
+                <button id="olcumRaporuBtn" class="tb" data-i="report" title="Balonlu ölçüleri Excel ölçüm raporu ya da kontrol planı şablonuna yazar; birden çok çizim seçilebilir">Rapor</button>
             </div>
-            
-            <!-- Bar 5: İşlemler - Sağ Üst -->
-            <div class="draggable-toolbar" data-initial-x="1350" data-initial-y="10" style="background: rgba(231, 76, 60, 0.95); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: move; pointer-events: auto; z-index: 104;">
-                <div class="toolbar-header" style="color: white; font-weight: bold; font-size: 11px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; cursor: move;">⚡ İŞLEMLER</div>
-                <div class="toolbar-content" data-content style="display: flex; flex-direction: column; gap: 6px;">
-                    <div style="display: flex; gap: 6px;">
-                        <button id="saveBackupBtn" class="btn btn-secondary" style="margin: 0; padding: 6px 12px; font-size: 12px;">💾 JSON Yedekle</button>
-                        <label for="backupFileInput" class="btn btn-secondary" style="margin: 0; cursor: pointer; padding: 6px 12px; font-size: 12px;">📂 JSON Yükle</label>
-                        <input type="file" id="backupFileInput" accept=".json" style="display: none;" />
-                        
-                        <button id="clearBtn" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;">🗑️ Temizle ▼</button>
-                        
-                        <button id="undoBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">↩️</button>
-                    </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button id="exportBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">🖼️ PNG</button>
-                        <button id="exportPdfBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📄 PDF</button>
-                        <button id="exportExcelBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📊 Excel</button>
-                        <button id="olcumRaporuBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;" title="Balonlu ölçüleri Excel ölçüm raporu şablonuna yazar; birden çok çizim seçilebilir">📋 Rapor</button>
-                    </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button id="resetDefaultsBtn" class="btn btn-warning" style="padding: 6px 12px; font-size: 12px; width: 100%;">🔄 Varsayılan</button>
-                    </div>
-                </div>
+            <div class="grup grup-son">
+                <button id="clearBtn" class="tb tb-tehlike" data-i="trash">Temizle ▾</button>
+                <button id="resetAllBtn" class="tb tb-tehlike" data-i="reset" title="Ekranı sıfırla: resim, balonlar, tablo, metin ve çizgiler silinir (onay sorar), yeni resim yüklenebilir">Sıfırla</button>
             </div>
-            
         </div>
-        
-        <!-- Dropdown menü - TOOLBAR DIŞINDA, sabit pozisyon -->
+
+        <!-- Dropdown menü - sabit pozisyon -->
         <div id="clearMenu" class="dropdown-menu" style="display: none; position: fixed; z-index: 99999;">
             <button class="dropdown-item" id="clearAnnotationsBtn">Balonları Temizle</button>
             <button class="dropdown-item" id="clearImageBtn">Resmi Temizle</button>
@@ -246,22 +64,112 @@
             <button class="dropdown-item" id="clearAllBtn">Tümünü Temizle</button>
         </div>
 
+        <div class="calisma">
+            <!-- Sol panel: ayarlar. Bölümler katlanır, panel üst çubuktan kapanır -->
+            <aside class="yan-panel" id="yanPanel" aria-label="Ayarlar">
+                <details open data-bolum="balon">
+                    <summary>Balon</summary>
+                    <div class="alan"><label for="balloonShapeSelect">Şekil</label><select id="balloonShapeSelect">
+                        <option value="circle">⚫ Daire</option>
+                        <option value="square">⬛ Kare</option>
+                        <option value="triangle">🔺 Üçgen</option>
+                        <option value="pentagon">⬠ Beşgen</option>
+                        <option value="hexagon">⬡ Altıgen</option>
+                        <option value="octagon">⯃ Sekizgen</option>
+                    </select></div>
+                    <div class="alan"><label for="balloonColorSelect">Renk</label><select id="balloonColorSelect">
+                        <option value="#3498db" selected>🔵 Mavi</option>
+                        <option value="#e74c3c">🔴 Kırmızı</option>
+                        <option value="#2ecc71">🟢 Yeşil</option>
+                        <option value="#f1c40f">🟡 Sarı</option>
+                        <option value="#9b59b6">🟣 Mor</option>
+                        <option value="#2c3e50">⚫ Lacivert</option>
+                        <option value="#1a1a1a">⚫ Siyah</option>
+                    </select></div>
+                    <div class="alan"><label for="fillTypeSelect">Dolgu</label><select id="fillTypeSelect">
+                        <option value="filled" selected>🔴 Dolu</option>
+                        <option value="empty">⚪ Boş</option>
+                    </select></div>
+                    <div class="alan"><label for="balloonSizeInput">Boyut</label><input type="number" id="balloonSizeInput" min="10" max="50" value="20"></div>
+                    <div class="alan"><label for="balloonTextSizeInput">Numara boyu</label><input type="number" id="balloonTextSizeInput" min="8" max="32" value="16"></div>
+                    <div class="alan"><label for="textColorSelect">Numara rengi</label><select id="textColorSelect">
+                        <option value="#000000">⚫ Siyah</option>
+                        <option value="#ffffff" selected>⚪ Beyaz</option>
+                        <option value="#e74c3c">🔴 Kırmızı</option>
+                        <option value="#3498db">🔵 Mavi</option>
+                        <option value="#2ecc71">🟢 Yeşil</option>
+                        <option value="#f1c40f">🟡 Sarı</option>
+                        <option value="#9b59b6">🟣 Mor</option>
+                    </select></div>
+                    <div class="alan"><label for="lineColorSelect">Çizgi rengi</label><select id="lineColorSelect">
+                        <option value="#2c3e50" selected>⚫ Siyah</option>
+                        <option value="#e74c3c">🔴 Kırmızı</option>
+                        <option value="#3498db">🔵 Mavi</option>
+                        <option value="#2ecc71">🟢 Yeşil</option>
+                        <option value="#f39c12">🟡 Sarı</option>
+                        <option value="#9b59b6">🟣 Mor</option>
+                        <option value="#ffffff">⚪ Beyaz</option>
+                    </select></div>
+                </details>
+                <details open data-bolum="numara">
+                    <summary>Numaralandırma</summary>
+                    <div class="alan"><label for="startNumberInput">Başlangıç</label><span class="ikili"><input type="number" id="startNumberInput" min="1" value="1"><button id="setStartNumberBtn" class="tb tb-kucuk" title="Başlangıç numarasını uygula">Uygula</button></span></div>
+                    <div class="alan"><label for="autoNumberDirectionSelect">Oto sıralama</label><select id="autoNumberDirectionSelect">
+                        <option value="none" selected>Yok</option>
+                        <option value="left-right">← → Soldan Sağa</option>
+                        <option value="right-left">→ ← Sağdan Sola</option>
+                        <option value="top-bottom">↑ ↓ Yukarıdan Aşağı</option>
+                        <option value="bottom-top">↓ ↑ Aşağıdan Yukarı</option>
+                        <option value="clockwise">🔄 Saat Yönü</option>
+                        <option value="counter-clockwise">🔃 Saat Yönü Tersi</option>
+                    </select></div>
+                    <div class="alan alan-sag"><button id="applyAutoNumberBtn" class="tb tb-kucuk" title="Otomatik numaralandırmayı uygula">Sıralamayı uygula</button></div>
+                    <label class="onay" title="Bir balon silinince kalanlar seçili sıralama yönüne göre yeniden numaralanır"><input type="checkbox" id="renumberOnDelete" checked> Silince yeniden numarala</label>
+                </details>
+                <details open data-bolum="metin">
+                    <summary>Metin</summary>
+                    <div class="alan"><label for="metinRenkSelect">Renk</label><select id="metinRenkSelect">
+                        <option value="#000000" selected>⚫ Siyah</option>
+                        <option value="#ffffff">⚪ Beyaz</option>
+                        <option value="#e74c3c">🔴 Kırmızı</option>
+                        <option value="#3498db">🔵 Mavi</option>
+                        <option value="#2ecc71">🟢 Yeşil</option>
+                        <option value="#f1c40f">🟡 Sarı</option>
+                        <option value="#9b59b6">🟣 Mor</option>
+                    </select></div>
+                    <div class="alan"><label for="textSizeInput">Boyut</label><input type="number" id="textSizeInput" min="8" max="72" value="16"></div>
+                    <div class="alan"><label for="textBoxSelect">Kutu</label><select id="textBoxSelect">
+                        <option value="none" selected>Yok</option>
+                        <option value="box">⬜ Kutulu</option>
+                    </select></div>
+                    <div class="alan"><label for="fontFamilySelect">Yazı tipi</label><select id="fontFamilySelect">
+                        <option value="Arial" selected>Arial</option>
+                        <option value="Arial Black">Arial Black</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Tahoma">Tahoma</option>
+                        <option value="Trebuchet MS">Trebuchet MS</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Segoe UI">Segoe UI</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="Calibri">Calibri</option>
+                    </select></div>
+                </details>
+                <div class="panel-alt">
+                    <button id="resetDefaultsBtn" class="tb tb-kucuk" data-i="sliders">Varsayılana dön</button>
+                    <a href="api-setup.html" class="tb tb-kucuk" data-i="key" target="_blank">API ayarı</a>
+                </div>
+            </aside>
+
         <div class="main-content">
-            <div class="canvas-section" style="margin-top: 0;">
+            <div class="canvas-section">
                 <div id="loadingIndicator" class="loading-indicator" style="display: none;">
                     <div class="spinner"></div>
                     <p>Ölçü okunuyor...</p>
                 </div>
-                
-                <!-- Zoom Kontrolleri -->
-                <div class="zoom-controls">
-                    <button id="zoomInBtn" class="zoom-btn" title="Yakınlaştır">🔍+</button>
-                    <span id="zoomLevel">100%</span>
-                    <button id="zoomOutBtn" class="zoom-btn" title="Uzaklaştır">🔍−</button>
-                    <button id="zoomResetBtn" class="zoom-btn" title="Ekrana Sığdır">📐 Fit</button>
-                    <button id="resetAllBtn" class="zoom-btn" style="margin-left: 24px; background: #e74c3c;" title="Ekranı sıfırla: resim, balonlar, tablo, metin ve çizgiler silinir (onay sorar), yeni resim yüklenebilir">🗑️ Sıfırla</button>
-                </div>
-                
+
                 <div class="canvas-container" id="canvasContainer">
                     <canvas id="drawingCanvas"></canvas>
                 </div>
@@ -316,6 +224,7 @@
                     </table>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -406,8 +315,8 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <!-- ?v= : tarayıcı/GitHub Pages önbelleği — her yayında artır, yoksa kullanıcı yeni kodu 10 dk+ görmez -->
-    <script src="app.js?v=20261104o"></script>
-    <script src="ai-balloon.js?v=20261104o"></script>
-    <script src="olcum-raporu.js?v=20261104o"></script>
+    <script src="app.js?v=20261104p"></script>
+    <script src="ai-balloon.js?v=20261104p"></script>
+    <script src="olcum-raporu.js?v=20261104p"></script>
 </body>
 </html>

@@ -4665,17 +4665,17 @@ function toggleTextMode() {
         const addLineBtn = document.getElementById('addLineBtn');
         addLineBtn.style.backgroundColor = '';
         addLineBtn.style.color = '';
-        addLineBtn.textContent = '📍 Çizgi Ekle';
+        addLineBtn.textContent = 'Çizgi';
         
-        addTextBtn.style.backgroundColor = '#e74c3c';
+        addTextBtn.style.backgroundColor = '#2563EB';
         addTextBtn.style.color = '#ffffff';
-        addTextBtn.textContent = '📝 Metin Modu (Aktif)';
+        addTextBtn.textContent = 'Metin (etkin)';
         canvas.style.cursor = 'text';
         showNotification('Metin modu aktif! Resme tıklayın ya da sürükleyerek kutu çizin.', 'info');
     } else {
         addTextBtn.style.backgroundColor = '';
         addTextBtn.style.color = '';
-        addTextBtn.textContent = '📝 Metin Ekle';
+        addTextBtn.textContent = 'Metin';
         canvas.style.cursor = 'crosshair';
         showNotification('Metin modu kapatıldı.', 'info');
     }
@@ -4690,17 +4690,17 @@ function toggleLineMode() {
         const addTextBtn = document.getElementById('addTextBtn');
         addTextBtn.style.backgroundColor = '';
         addTextBtn.style.color = '';
-        addTextBtn.textContent = '📝 Metin Ekle';
+        addTextBtn.textContent = 'Metin';
         
-        addLineBtn.style.backgroundColor = '#27ae60';
+        addLineBtn.style.backgroundColor = '#2563EB';
         addLineBtn.style.color = '#ffffff';
-        addLineBtn.textContent = '📍 Çizgi Modu (Aktif)';
+        addLineBtn.textContent = 'Çizgi (etkin)';
         canvas.style.cursor = 'crosshair';
         showNotification('Çizgi modu aktif! Başlangıç ve bitiş noktası seçin.', 'info');
     } else {
         addLineBtn.style.backgroundColor = '';
         addLineBtn.style.color = '';
-        addLineBtn.textContent = '📍 Çizgi Ekle';
+        addLineBtn.textContent = 'Çizgi';
         canvas.style.cursor = 'crosshair';
         showNotification('Çizgi modu kapatıldı.', 'info');
     }
@@ -5079,462 +5079,21 @@ function loadBackupFile(file) {
     reader.readAsText(file);
 }
 
-// ═══════════════════════════════════════════════════════════
-// SÜRÜKLENEBİLİR TOOLBAR SİSTEMİ - BASİT VE ÇALIŞAN
-// ═══════════════════════════════════════════════════════════
-
-// Global drag flag - herhangi bir toolbar taşınıyor mu?
-window.isAnyToolbarDragging = false;
-
-// Dikey mod uygulama fonksiyonu - global
-function applyVerticalMode(toolbar, content) {
-    toolbar.style.maxWidth = '140px';
-    toolbar.style.width = '140px';
-    content.style.flexDirection = 'column';
-    content.style.maxWidth = '100%';
-    content.style.width = '100%';
-    content.style.gap = '3px';
-    content.style.flexWrap = 'nowrap';
-    
-    const labels = content.querySelectorAll('label');
-    labels.forEach(label => {
-        if (!label.classList.contains('file-label')) {
-            label.style.fontSize = '8px';
-            label.style.display = 'block';
-            label.style.marginBottom = '1px';
-        }
+// Üst çubuk yüksekliği (sığmazsa iki satır) tuval ve panele bildirilir; panel açık/kapalı ve katlı bölümler bu tarayıcıda hatırlanır
+document.addEventListener('DOMContentLoaded', () => {
+    const ust = document.getElementById('ustCubuk'), kok = document.documentElement;
+    new ResizeObserver(() => kok.style.setProperty('--ust', ust.offsetHeight + 'px')).observe(ust);
+    const al = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const koy = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* gizli pencere */ } };
+    const btn = document.getElementById('panelBtn');
+    const panelKapa = kapali => { document.body.classList.toggle('panel-kapali', kapali); btn.setAttribute('aria-expanded', String(!kapali)); };
+    panelKapa(al('teknikresim_panel') === 'kapali');
+    btn.addEventListener('click', () => { const k = !document.body.classList.contains('panel-kapali'); panelKapa(k); koy('teknikresim_panel', k ? 'kapali' : 'acik'); });
+    document.querySelectorAll('#yanPanel details').forEach(d => {
+        const k = 'teknikresim_bolum_' + d.dataset.bolum;
+        if (al(k) === 'kapali') d.open = false;
+        d.addEventListener('toggle', () => koy(k, d.open ? 'acik' : 'kapali'));
     });
-    
-    const buttons = content.querySelectorAll('button, .btn, .file-label');
-    buttons.forEach(btn => {
-        btn.style.width = '100%';
-        btn.style.fontSize = '8px';
-        btn.style.padding = '2px 3px';
-        btn.style.marginBottom = '1px';
-        btn.style.whiteSpace = 'nowrap';
-        btn.style.overflow = 'hidden';
-        btn.style.textOverflow = 'ellipsis';
-        btn.style.boxSizing = 'border-box';
-    });
-    
-    const selects = content.querySelectorAll('select');
-    selects.forEach(sel => {
-        sel.style.width = '100%';
-        sel.style.fontSize = '8px';
-        sel.style.marginBottom = '1px';
-        sel.style.padding = '1px';
-        sel.style.boxSizing = 'border-box';
-    });
-    
-    const inputs = content.querySelectorAll('input[type="number"], input[type="text"]');
-    inputs.forEach(inp => {
-        inp.style.width = '100%';
-        inp.style.fontSize = '8px';
-        inp.style.padding = '1px';
-        inp.style.marginBottom = '1px';
-        inp.style.boxSizing = 'border-box';
-    });
-    
-    const divs = content.querySelectorAll('div');
-    divs.forEach(div => {
-        div.style.display = 'flex';
-        div.style.flexDirection = 'column';
-        div.style.width = '100%';
-        div.style.boxSizing = 'border-box';
-    });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM yüklendi, toolbar sistemi başlatılıyor...');
-    
-    const toolbars = Array.from(document.querySelectorAll('.draggable-toolbar'));
-    
-    console.log(`Bulunan toolbar sayısı: ${toolbars.length}`);
-    
-    if (toolbars.length === 0) {
-        console.error('Hiç toolbar bulunamadı!');
-        return;
-    }
-    
-    // Her toolbar için ABSOLUTE position ve başlangıç konumu ayarla
-    toolbars.forEach((toolbar, index) => {
-        let initialX = parseInt(toolbar.dataset.initialX) || 10;
-        const initialY = parseInt(toolbar.dataset.initialY) || 10;
-        
-        // Eğer initialX > 1000 ise, sağ kenara yerleştir (dikey bölge)
-        if (initialX > 1000) {
-            initialX = window.innerWidth - 160; // Sağdan 160px (dikey bölgede)
-            console.log(`Bar ${index} sağ kenara taşındı: x=${initialX}`);
-        }
-        
-        toolbar.style.position = 'absolute'; // ABSOLUTE - sayfa ile hareket eder
-        toolbar.style.left = `${initialX}px`;
-        toolbar.style.top = `${initialY + 120}px`; // Header yüksekliği kadar aşağı
-        toolbar.style.zIndex = String(1000 + index);
-        
-        console.log(`Bar ${index} ayarlandı: x=${initialX}, y=${initialY + 120}, zIndex=${1000 + index}`);
-        
-        // İlk yüklemede orientation kontrol et (x=5 ise dikey, x>window.width-200 ise dikey)
-        if (initialX < 200 || initialX > window.innerWidth - 200) {
-            // Dikey moda geçir
-            setTimeout(() => {
-                const content = toolbar.querySelector('.toolbar-content[data-content]');
-                if (content) {
-                    applyVerticalMode(toolbar, content);
-                    console.log(`Bar ${index} başlangıçta DİKEY moda geçirildi (x=${initialX})`);
-                }
-            }, 100);
-        }
-    });
-    
-    // Her toolbar için sürükleme
-    toolbars.forEach((toolbar, toolbarIndex) => {
-        console.log(`Toolbar ${toolbarIndex} için sürükleme sistemi kuruluyor...`);
-        
-        let isDragging = false;
-        let startX = 0, startY = 0;
-        let currentX = 0, currentY = 0;
-        
-        const header = toolbar.querySelector('.toolbar-header');
-        if (!header) {
-            console.error(`Toolbar ${toolbarIndex} header bulunamadı!`);
-            return;
-        }
-        
-        console.log(`Toolbar ${toolbarIndex} header bulundu, event listener'lar ekleniyor...`);
-        
-        // Sadece header'a event ekle - SADECE header'ın kendisine!
-        header.addEventListener('contextmenu', (e) => e.preventDefault());
-        
-        let isDraggingStarted = false;
-        
-        header.addEventListener('mousedown', (e) => {
-            // SADECE header'ın tam kendisine tıklanırsa
-            if (e.target === header) {
-                console.log('Header\'a tıklandı, drag başlıyor');
-                isDraggingStarted = true;
-                startDrag(e);
-            } else {
-                console.log('Header içinde başka element, drag iptal');
-                isDraggingStarted = false;
-            }
-        });
-        
-        header.addEventListener('touchstart', (e) => {
-            if (e.target === header) {
-                isDraggingStarted = true;
-                startDrag(e);
-            } else {
-                isDraggingStarted = false;
-            }
-        }, { passive: false });
-        
-        // Content'e tıklanınca kesinlikle drag başlamasın
-        const content = toolbar.querySelector('.toolbar-content');
-        if (content) {
-            content.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                isDraggingStarted = false;
-            }, true); // Capture phase
-            
-            content.addEventListener('touchstart', (e) => {
-                e.stopPropagation();
-                isDraggingStarted = false;
-            }, { passive: false, capture: true });
-        }
-        
-        function startDrag(e) {
-            if (!isDraggingStarted) {
-                console.log('isDraggingStarted false, iptal');
-                return;
-            }
-            
-            console.log(`Toolbar ${toolbarIndex} sürükleme başladı`);
-            e.preventDefault();
-            isDragging = true;
-            window.isAnyToolbarDragging = true; // Global flag
-            
-            const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
-            
-            const rect = toolbar.getBoundingClientRect();
-            startX = clientX - rect.left;
-            startY = clientY - rect.top;
-            
-            toolbar.style.zIndex = '9999';
-            header.style.cursor = 'grabbing';
-            
-            document.addEventListener('mousemove', doDrag);
-            document.addEventListener('touchmove', doDrag, { passive: false });
-            document.addEventListener('mouseup', stopDrag);
-            document.addEventListener('touchend', stopDrag);
-        }
-        
-        function doDrag(e) {
-            if (!isDragging) return;
-            e.preventDefault();
-            
-            const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
-            
-            currentX = clientX - startX;
-            currentY = clientY - startY;
-            
-            // Ekran sınırları - daha esnek
-            const minX = 0;
-            const minY = 120; // Header altında
-            const maxX = window.innerWidth - 100; // Sağ kenar için boşluk
-            const maxY = window.innerHeight + window.scrollY - 50;
-            
-            if (currentX < minX) currentX = minX;
-            if (currentY < minY) currentY = minY;
-            if (currentX > maxX) currentX = maxX;
-            if (currentY > maxY) currentY = maxY;
-            
-            toolbar.style.left = `${currentX}px`;
-            toolbar.style.top = `${currentY}px`;
-            
-            // Dikey/Yatay mod - kenarlarda dikey
-            updateOrientation(toolbar, clientX);
-        }
-        
-        // Dikey/Yatay mod kontrolü
-        function updateOrientation(toolbar, mouseX) {
-            const content = toolbar.querySelector('.toolbar-content[data-content]');
-            if (!content) {
-                console.error('Content div bulunamadı!', toolbar);
-                return;
-            }
-            
-            const leftEdge = 200; // Sol 200px
-            const rightEdge = window.innerWidth - 200; // Sağdan 200px
-            
-            console.log('Orientation kontrol - mouseX:', mouseX, 'leftEdge:', leftEdge, 'rightEdge:', rightEdge);
-            
-            if (mouseX < leftEdge || mouseX > rightEdge) {
-                // DİKEY MOD
-                console.log('DİKEY MOD AKTIF');
-                toolbar.style.maxWidth = '140px';
-                toolbar.style.width = '140px';
-                content.style.flexDirection = 'column';
-                content.style.maxWidth = '100%';
-                content.style.width = '100%';
-                content.style.gap = '3px';
-                content.style.flexWrap = 'nowrap';
-                
-                // Elemanları dikey modda kompakt yap
-                const labels = content.querySelectorAll('label');
-                labels.forEach(label => {
-                    if (!label.classList.contains('file-label')) {
-                        label.style.fontSize = '8px';
-                        label.style.display = 'block';
-                        label.style.marginBottom = '1px';
-                    }
-                });
-                
-                const buttons = content.querySelectorAll('button, .btn, .file-label');
-                buttons.forEach(btn => {
-                    btn.style.width = '100%';
-                    btn.style.fontSize = '8px';
-                    btn.style.padding = '2px 3px';
-                    btn.style.marginBottom = '1px';
-                    btn.style.whiteSpace = 'nowrap';
-                    btn.style.overflow = 'hidden';
-                    btn.style.textOverflow = 'ellipsis';
-                    btn.style.boxSizing = 'border-box';
-                });
-                
-                const selects = content.querySelectorAll('select');
-                selects.forEach(sel => {
-                    sel.style.width = '100%';
-                    sel.style.fontSize = '8px';
-                    sel.style.marginBottom = '1px';
-                    sel.style.padding = '1px';
-                    sel.style.boxSizing = 'border-box';
-                });
-                
-                const inputs = content.querySelectorAll('input[type="number"], input[type="text"]');
-                inputs.forEach(inp => {
-                    inp.style.width = '100%';
-                    inp.style.fontSize = '8px';
-                    inp.style.padding = '1px';
-                    inp.style.marginBottom = '1px';
-                    inp.style.boxSizing = 'border-box';
-                });
-                
-                const divs = content.querySelectorAll('div');
-                divs.forEach(div => {
-                    div.style.display = 'flex';
-                    div.style.flexDirection = 'column';
-                    div.style.width = '100%';
-                    div.style.boxSizing = 'border-box';
-                });
-            } else {
-                // YATAY MOD
-                console.log('YATAY MOD AKTIF');
-                toolbar.style.maxWidth = '';
-                toolbar.style.width = '';
-                content.style.flexDirection = '';
-                content.style.maxWidth = '';
-                content.style.width = '';
-                content.style.gap = '';
-                content.style.flexWrap = '';
-                
-                // Stilleri sıfırla
-                const labels = content.querySelectorAll('label');
-                labels.forEach(label => {
-                    label.style.fontSize = '';
-                    label.style.display = '';
-                    label.style.marginBottom = '';
-                });
-                
-                const buttons = content.querySelectorAll('button, .btn, .file-label');
-                buttons.forEach(btn => {
-                    btn.style.width = '';
-                    btn.style.fontSize = '';
-                    btn.style.padding = '';
-                    btn.style.marginBottom = '';
-                    btn.style.whiteSpace = '';
-                    btn.style.overflow = '';
-                    btn.style.textOverflow = '';
-                    btn.style.boxSizing = '';
-                });
-                
-                const selects = content.querySelectorAll('select');
-                selects.forEach(sel => {
-                    sel.style.width = '';
-                    sel.style.fontSize = '';
-                    sel.style.marginBottom = '';
-                    sel.style.padding = '';
-                    sel.style.boxSizing = '';
-                });
-                
-                const inputs = content.querySelectorAll('input[type="number"], input[type="text"]');
-                inputs.forEach(inp => {
-                    inp.style.width = '';
-                    inp.style.fontSize = '';
-                    inp.style.padding = '';
-                    inp.style.marginBottom = '';
-                    inp.style.boxSizing = '';
-                });
-                
-                const divs = content.querySelectorAll('div');
-                divs.forEach(div => {
-                    div.style.display = '';
-                    div.style.flexDirection = '';
-                    div.style.width = '';
-                    div.style.boxSizing = '';
-                });
-            }
-        }
-        
-        function stopDrag() {
-            if (!isDragging) return;
-            console.log(`Toolbar ${toolbarIndex} sürükleme bitti: x=${currentX}, y=${currentY}`);
-            isDragging = false;
-            isDraggingStarted = false;
-            header.style.cursor = 'move';
-            toolbar.style.zIndex = String(1000 + toolbarIndex);
-            
-            // Global flag'i biraz gecikmeli sıfırla (dropdown için)
-            setTimeout(() => {
-                window.isAnyToolbarDragging = false;
-            }, 150);
-            
-            document.removeEventListener('mousemove', doDrag);
-            document.removeEventListener('touchmove', doDrag);
-            document.removeEventListener('mouseup', stopDrag);
-            document.removeEventListener('touchend', stopDrag);
-            
-            // Çakışma kontrolü ve otomatik kaydırma
-            checkAndResolveCollisions();
-        }
-        
-        // Çakışma kontrolü ve çözümü
-        function checkAndResolveCollisions() {
-            const allToolbars = document.querySelectorAll('.draggable-toolbar');
-            let attempts = 0;
-            const maxAttempts = 5;
-            
-            function checkOnce() {
-                const currentRect = toolbar.getBoundingClientRect();
-                let hasCollision = false;
-                
-                allToolbars.forEach((otherToolbar, otherIndex) => {
-                    if (otherToolbar === toolbar) return;
-                    
-                    const otherRect = otherToolbar.getBoundingClientRect();
-                    
-                    // Basit çakışma kontrolü - tolerance YOK
-                    const isColliding = !(
-                        currentRect.right <= otherRect.left || 
-                        currentRect.left >= otherRect.right || 
-                        currentRect.bottom <= otherRect.top || 
-                        currentRect.top >= otherRect.bottom
-                    );
-                    
-                    if (isColliding) {
-                        console.log(`🔴 ÇAKIŞMA! Toolbar ${toolbarIndex} <-> Toolbar ${otherIndex}`);
-                        hasCollision = true;
-                        
-                        // Merkez noktalarına göre karar ver
-                        const currentCenterX = (currentRect.left + currentRect.right) / 2;
-                        const currentCenterY = (currentRect.top + currentRect.bottom) / 2;
-                        const otherCenterX = (otherRect.left + otherRect.right) / 2;
-                        const otherCenterY = (otherRect.top + otherRect.bottom) / 2;
-                        
-                        const deltaX = currentCenterX - otherCenterX;
-                        const deltaY = currentCenterY - otherCenterY;
-                        
-                        // Hangi yönde daha fazla ayrık?
-                        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                            // Yatayda ayır
-                            if (deltaX > 0) {
-                                // Sağa it - daha fazla mesafe
-                                currentX = otherRect.right + 35;
-                            } else {
-                                // Sola it
-                                currentX = otherRect.left - currentRect.width - 35;
-                            }
-                        } else {
-                            // Dikeyde ayır
-                            if (deltaY > 0) {
-                                // Aşağı it
-                                currentY = otherRect.bottom + 35;
-                            } else {
-                                // Yukarı it
-                                currentY = otherRect.top - currentRect.height - 35;
-                            }
-                        }
-                        
-                        // Sınırları kontrol et
-                        const minX = 0;
-                        const minY = 120;
-                        const maxX = window.innerWidth - currentRect.width - 10;
-                        const maxY = window.innerHeight + window.scrollY - currentRect.height - 10;
-                        
-                        currentX = Math.max(minX, Math.min(maxX, currentX));
-                        currentY = Math.max(minY, Math.min(maxY, currentY));
-                        
-                        toolbar.style.left = `${currentX}px`;
-                        toolbar.style.top = `${currentY}px`;
-                        
-                        console.log(`✅ Kaydırıldı: x=${currentX}, y=${currentY}`);
-                    }
-                });
-                
-                // Eğer hala çakışma varsa ve deneme hakkımız varsa tekrar kontrol et
-                if (hasCollision && attempts < maxAttempts) {
-                    attempts++;
-                    setTimeout(checkOnce, 50);
-                }
-            }
-            
-            checkOnce();
-        }
-    });
-    
-    console.log('Toolbar sistemi başarıyla kuruldu!');
 });
 
 
