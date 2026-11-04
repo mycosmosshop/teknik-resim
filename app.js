@@ -202,13 +202,6 @@ function setupEventListeners() {
     const applyToleranceBtn = document.getElementById('applyToleranceBtn');
     const clearToleranceBtn = document.getElementById('clearToleranceBtn');
     const openToleranceTableBtn = document.getElementById('openToleranceTableBtn');
-    const balloonShapeSelect = document.getElementById('balloonShapeSelect');
-    const balloonColorSelect = document.getElementById('balloonColorSelect');
-    const lineColorSelect = document.getElementById('lineColorSelect');
-    const textColorSelect = document.getElementById('textColorSelect');
-    const fillTypeSelect = document.getElementById('fillTypeSelect');
-    const balloonSizeInput = document.getElementById('balloonSizeInput');
-    const balloonTextSizeInput = document.getElementById('balloonTextSizeInput');
     const textSizeInput = document.getElementById('textSizeInput');
     const textBoxSelect = document.getElementById('textBoxSelect');
 
@@ -307,40 +300,11 @@ function setupEventListeners() {
     openToleranceTableBtn.addEventListener('click', openToleranceTableModal);
     
     // Balon şekli ve renk değişikliklerini dinle
-    balloonShapeSelect.addEventListener('change', (e) => {
-        currentBalloonShape = e.target.value;
-        console.log('🔷 Balon şekli değiştirildi:', currentBalloonShape);
-    });
-    
-    balloonColorSelect.addEventListener('change', (e) => {
-        currentBalloonColor = e.target.value;
-        console.log('🎨 Balon rengi değiştirildi:', currentBalloonColor);
-    });
-    
-    lineColorSelect.addEventListener('change', (e) => {
-        currentLineColor = e.target.value;
-        console.log('✏️ Çizgi rengi değiştirildi:', currentLineColor);
-    });
-    
-    textColorSelect.addEventListener('change', (e) => {
-        currentTextColor = e.target.value;
-        console.log('📝 Yazı rengi değiştirildi:', currentTextColor);
-    });
-    
-    currentFillType = fillTypeSelect.value;
-    fillTypeSelect.addEventListener('change', (e) => {
-        balonDolgusuUygula(e.target.value);
-        console.log('🔳 Dolgu tipi değiştirildi:', currentFillType);
-    });
-    
-    balloonSizeInput.addEventListener('change', (e) => {
-        currentBalloonSize = parseInt(e.target.value) || 20;
-        console.log('🔵 Balon boyutu değiştirildi:', currentBalloonSize);
-    });
-    
-    balloonTextSizeInput.addEventListener('change', (e) => {
-        currentBalloonTextSize = parseInt(e.target.value) || 16;
-        console.log('🔤 Balon yazı boyutu değiştirildi:', currentBalloonTextSize);
+    BALON_AYARLARI.forEach(ayar => {
+        const kutu = document.getElementById(ayar.id);
+        if (!kutu) return;
+        ayar.ata(balonAyarDegeri(ayar, kutu));      // açılışta kutu ile değer aynı olsun
+        kutu.addEventListener('change', () => balonAyarUygula(ayar, balonAyarDegeri(ayar, kutu)));
     });
     
     textSizeInput.addEventListener('change', (e) => {
@@ -353,11 +317,6 @@ function setupEventListeners() {
         console.log('⬜ Metin kutusu değiştirildi:', currentTextBox);
     });
     
-    const fontFamilySelect = document.getElementById('fontFamilySelect');
-    fontFamilySelect.addEventListener('change', (e) => {
-        currentFontFamily = e.target.value;
-        console.log('🔤 Yazı stili değiştirildi:', currentFontFamily);
-    });
 
     // Zoom kontrolleri
     canvasContainer = document.getElementById('canvasContainer');
@@ -3552,11 +3511,35 @@ function undoLastAnnotation() {
     }
 }
 
-// Dolgu tüm balonlara uygulanır: kutudaki seçim ile çizimdeki balon ayrışmasın
-function balonDolgusuUygula(tip) {
-    currentFillType = tip;
-    annotations.forEach(a => { a.fillType = tip; });
+// Balon ayarları: kutu → balon alanı → yeni balonda kullanılan değer. Değişiklik çizilmiş balonlara da uygulanır.
+const BALON_AYARLARI = [
+    { id: 'balloonShapeSelect', alan: 'balloonShape', ata: v => { currentBalloonShape = v; } },
+    { id: 'balloonColorSelect', alan: 'balloonColor', ata: v => { currentBalloonColor = v; } },
+    { id: 'lineColorSelect', alan: 'lineColor', ata: v => { currentLineColor = v; } },
+    { id: 'textColorSelect', alan: 'textColor', ata: v => { currentTextColor = v; } },
+    { id: 'fillTypeSelect', alan: 'fillType', ata: v => { currentFillType = v; } },
+    { id: 'balloonSizeInput', alan: 'balloonSize', sayi: 20, ata: v => { currentBalloonSize = v; } },
+    { id: 'balloonTextSizeInput', alan: 'balloonTextSize', sayi: 16, ata: v => { currentBalloonTextSize = v; } },
+    { id: 'fontFamilySelect', alan: 'fontFamily', ata: v => { currentFontFamily = v; } }
+];
+function balonAyarDegeri(ayar, kutu) { return ayar.sayi ? (parseInt(kutu.value) || ayar.sayi) : kutu.value; }
+// Turuncu "kontrol et" balonları renk değişiminde turuncu kalır: uyarı kaybolmasın
+function balonAyarindanEtkilenir(ayar, balon) { return !(ayar.alan === 'balloonColor' && balon.aiKontrol); }
+function balonAyarUygula(ayar, deger) {
+    ayar.ata(deger);
+    annotations.forEach(b => { if (balonAyarindanEtkilenir(ayar, b)) b[ayar.alan] = deger; });
     if (annotations.length) redrawCanvas();
+}
+// JSON yüklenince kutular kayıttaki balonları gösterir; balonlar farklıysa ya da değer listede yoksa kutu değişmez
+function balonAyarlariniKayittanAl() {
+    BALON_AYARLARI.forEach(ayar => {
+        const kutu = document.getElementById(ayar.id);
+        const degerler = annotations.filter(b => balonAyarindanEtkilenir(ayar, b)).map(b => b[ayar.alan]);
+        if (!kutu || !degerler.length || !degerler.every(v => v === degerler[0])) return;
+        const eski = kutu.value;
+        kutu.value = degerler[0];
+        if (String(kutu.value) === String(degerler[0])) ayar.ata(degerler[0]); else kutu.value = eski;
+    });
 }
 
 function resetToDefaults() {
@@ -3574,7 +3557,7 @@ function resetToDefaults() {
 
     // Renk Ayarları
     document.getElementById('lineColorSelect').value = '#2c3e50';
-    document.getElementById('textColorSelect').value = '#000000';
+    document.getElementById('textColorSelect').value = '#ffffff';
     
     // Metin Ayarları
     document.getElementById('textSizeInput').value = '16';
@@ -3585,17 +3568,13 @@ function resetToDefaults() {
         fontFamilySelect.value = 'Arial';
     }
 
-    // Kutular kadar çizimde kullanılan değerler de döner (kutuda "Dolu" yazıp balon boş çıkıyordu)
-    currentBalloonShape = 'circle';
-    currentBalloonColor = '#3498db';
-    currentBalloonSize = 20;
-    currentBalloonTextSize = 16;
-    currentLineColor = '#2c3e50';
-    currentTextColor = '#ffffff';
+    // Kutular kadar kullanılan değerler ve çizilmiş balonlar da döner (kutuda "Dolu" yazıp balon boş çıkıyordu)
     currentTextSize = 16;
     currentTextBox = 'none';
-    currentFontFamily = 'Arial';
-    balonDolgusuUygula('filled');
+    BALON_AYARLARI.forEach(ayar => {
+        const kutu = document.getElementById(ayar.id);
+        if (kutu) balonAyarUygula(ayar, balonAyarDegeri(ayar, kutu));
+    });
     
     showNotification('Ayarlar varsayılana döndürüldü', 'success');
     console.log('✅ Tüm ayarlar varsayılan değerlere döndürüldü');
@@ -4999,11 +4978,7 @@ function loadBackupFile(file) {
                 if (!ann.balloonTextSize) ann.balloonTextSize = 16;
                 if (!ann.fontFamily) ann.fontFamily = 'Arial';
             });
-            // Kayıttaki dolgu kutuda görünsün (kutu "Dolu" derken kayıt "Boş" gelmesin; değiştirince hepsine uygulanır)
-            if (annotations.length && annotations.every(a => a.fillType === annotations[0].fillType)) {
-                currentFillType = annotations[0].fillType;
-                document.getElementById('fillTypeSelect').value = currentFillType;
-            }
+            balonAyarlariniKayittanAl();
 
             // Başlangıç seçildiyse kayıt ona kayar; seçilmediyse kutu kaydın başlangıcını gösterir (sonraki sıralamalar kaydı 1'e çekmesin)
             if (annotations.length) {

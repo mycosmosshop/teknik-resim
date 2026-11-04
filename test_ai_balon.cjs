@@ -127,7 +127,7 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   const yeni = (numaralar, bas, yon = 'none') => {
     const girdi = { value: String(bas), addEventListener() { } };
     const ctx = new Function('girdi', 'numaralar', 'yon', `
-      let baslangicElle = false, balloonCounter = 1, textAnnotations = [], currentImage = null, imageLoaded = false, sonBildirim = '', tablo = 0;
+      let currentBalloonShape, currentBalloonColor, currentLineColor, currentTextColor, currentFillType, currentBalloonSize, currentBalloonTextSize, currentFontFamily; let baslangicElle = false, balloonCounter = 1, textAnnotations = [], currentImage = null, imageLoaded = false, sonBildirim = '', tablo = 0;
       let annotations = numaralar.map((n, i) => ({ id: i + 1, number: n, rect: { x: 100 * i, y: 50, width: 40, height: 20 }, balloon: { x: 100 * i, y: 10 } }));
       const canvas = { width: 800, height: 600 }, autoNumberDirectionSelect = { value: yon };
       const document = { getElementById: id => id === 'startNumberInput' ? girdi : id === 'tableBody' ? { innerHTML: '' } : {} };
@@ -135,7 +135,7 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
       const console = { log() { }, warn() { }, error(e) { throw e; } }; const window = {};
       class FileReader { readAsText(f) { this.onload({ target: { result: f } }); } }
       ${govde('balonBaslangicNo')}\n${govde('balonlariKaydir')}\n${govde('setStartNumber')}\n${govde('applyAutoNumbering')}\n${govde('renumberAnnotations')}
-      ${govde('balonSaatYonuSirala')}\n${govde('balonlarHizali')}\n${govde('balonYay')}\n${govde('autoAlignBalloons')}\n${govde('loadBackupFile')}
+      ${app.slice(app.indexOf('const BALON_AYARLARI'), app.indexOf('\n];', app.indexOf('const BALON_AYARLARI')) + 3)}\n${govde('balonAyarindanEtkilenir')}\n${govde('balonAyarlariniKayittanAl')}\n${govde('balonSaatYonuSirala')}\n${govde('balonlarHizali')}\n${govde('balonYay')}\n${govde('autoAlignBalloons')}\n${govde('loadBackupFile')}
       return { setStartNumber, applyAutoNumbering, renumberAnnotations, autoAlignBalloons, loadBackupFile, secili: () => { baslangicElle = true; },
         no: () => annotations.map(a => a.number), sayac: () => balloonCounter, tablo: () => tablo };`)(girdi, numaralar, yon);
     ctx.girdi = girdi; return ctx;
@@ -159,21 +159,34 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seçenek yok / tikli de�
   c.girdi.value = '100'; c.applyAutoNumbering(); assert.deepStrictEqual(c.no(), [100, 101], 'yüklenen kayıtta Uygula');
   assert(app.includes("addEventListener('change', () => {\n        baslangicElle = true;"), 'kutu değişimi seçim sayılmalı');
 }
-// 7c) Dolgu: "Varsayılana dön" çizimde kullanılan değeri de döndürür; seçim mevcut balonlara uygulanır
+// 7c) Balon ayarları sonradan değişir: kutu → çizilmiş balonlar; varsayılana dön; JSON kutuları eşitler; turuncu balon korunur
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8');
   const govde = ad => { const i = app.indexOf('function ' + ad + '('); assert(i >= 0, ad); return app.slice(i, app.indexOf('\n}', i) + 2); };
-  const dolgu = new Function(`
+  const tablo = app.slice(app.indexOf('const BALON_AYARLARI'), app.indexOf('\n];', app.indexOf('const BALON_AYARLARI')) + 3);
+  const tek = ad => { const i = app.indexOf('function ' + ad + '('); return app.slice(i, app.indexOf('\n', i)); };
+  const ort = new Function(`
     let currentFillType = 'empty', currentBalloonShape = 'square', currentBalloonColor = 'x', currentBalloonSize = 9, currentBalloonTextSize = 9, currentLineColor = 'x', currentTextColor = 'x', currentTextSize = 9, currentTextBox = 'x', currentFontFamily = 'x';
-    let annotations = [{ fillType: 'empty' }, { fillType: 'empty' }], baslangicElle = true, balloonCounter = 3, ciz = 0;
+    let annotations = [{ fillType: 'empty', balloonColor: '#e74c3c' }, { fillType: 'empty', balloonColor: '#e67e22', aiKontrol: true }], baslangicElle = true, balloonCounter = 3, ciz = 0;
     const redrawCanvas = () => { ciz++; }, showNotification = () => { }, console = { log() { } };
     const kutu = {}, document = { getElementById: id => (kutu[id] = kutu[id] || { value: '' }) };
-    ${govde('balonDolgusuUygula')}\n${govde('resetToDefaults')}
-    return { resetToDefaults, balonDolgusuUygula, dolgu: () => currentFillType, renk: () => currentBalloonColor, yazi: () => currentTextColor, an: () => annotations.map(a => a.fillType), ciz: () => ciz, kutu };`)();
-  dolgu.resetToDefaults();
-  assert.strictEqual(dolgu.dolgu(), 'filled', 'varsayılana dön: kutuda Dolu, değer de dolu olmalı'); assert.strictEqual(dolgu.kutu.fillTypeSelect.value, 'filled');
-  assert.strictEqual(dolgu.renk(), '#3498db'); assert.strictEqual(dolgu.yazi(), '#ffffff', 'dolu balonda beyaz yazı korunmalı');
-  assert.deepStrictEqual(dolgu.an(), ['filled', 'filled'], 'mevcut balonlar dolmalı'); assert(dolgu.ciz() >= 1, 'yeniden çizim');
-  dolgu.balonDolgusuUygula('empty'); assert.deepStrictEqual(dolgu.an(), ['empty', 'empty'], 'seçim tüm balonlara');
+    ${tablo}\n${tek('balonAyarDegeri')}\n${tek('balonAyarindanEtkilenir')}\n${govde('balonAyarUygula')}\n${govde('balonAyarlariniKayittanAl')}\n${govde('resetToDefaults')}
+    return { resetToDefaults, balonAyarUygula, balonAyarlariniKayittanAl, ayar: alan => BALON_AYARLARI.find(a => a.alan === alan), an: () => annotations, yukle: l => { annotations = l; },
+      dolgu: () => currentFillType, renk: () => currentBalloonColor, yazi: () => currentTextColor, boyut: () => currentBalloonSize, ciz: () => ciz, kutu, deger: balonAyarDegeri };`)();
+  assert.strictEqual(new Set(['balloonShape','balloonColor','lineColor','textColor','fillType','balloonSize','balloonTextSize','fontFamily'].map(a => !!ort.ayar(a))).size, 1, 'tüm ayarlar tabloda');
+  for (const a of ['balloonShape', 'lineColor', 'textColor', 'fontFamily', 'balloonSize', 'balloonTextSize', 'fillType']) { ort.balonAyarUygula(ort.ayar(a), 'Y'); assert(ort.an().every(b => b[a] === 'Y'), a + ' çizilmiş balonlara uygulanmalı'); }
+  ort.balonAyarUygula(ort.ayar('balloonColor'), '#2ecc71');
+  assert.deepStrictEqual(ort.an().map(b => b.balloonColor), ['#2ecc71', '#e67e22'], 'renk uygulanır, turuncu kontrol balonu korunur'); assert.strictEqual(ort.renk(), '#2ecc71');
+  assert.strictEqual(ort.deger(ort.ayar('balloonSize'), { value: '33' }), 33); assert.strictEqual(ort.deger(ort.ayar('balloonSize'), { value: '' }), 20, 'boş boyut varsayılana');
+  const c0 = ort.ciz(); ort.resetToDefaults();
+  assert.strictEqual(ort.dolgu(), 'filled', 'varsayılana dön: değer de dolu'); assert.strictEqual(ort.kutu.fillTypeSelect.value, 'filled');
+  assert.strictEqual(ort.yazi(), '#ffffff'); assert.strictEqual(ort.kutu.textColorSelect.value, '#ffffff', 'yazı kutusu gerçek rengi göstermeli');
+  assert.strictEqual(ort.boyut(), 20); assert(ort.an().every(b => b.fillType === 'filled' && b.balloonSize === 20), 'balonlar da döner'); assert(ort.ciz() > c0, 'yeniden çizim');
+  assert.strictEqual(ort.an()[1].balloonColor, '#e67e22', 'varsayılana dönüşte de turuncu kalır');
+  // JSON: tek tip değer kutuya gelir, karışık olan kutuyu değiştirmez
+  ort.yukle([{ fillType: 'empty', balloonSize: 25, lineColor: 'a' }, { fillType: 'empty', balloonSize: 25, lineColor: 'b' }]);
+  ort.kutu.lineColorSelect.value = 'k'; ort.balonAyarlariniKayittanAl();
+  assert.strictEqual(ort.kutu.fillTypeSelect.value, 'empty'); assert.strictEqual(ort.dolgu(), 'empty'); assert.strictEqual(ort.boyut(), 25); assert.strictEqual(ort.kutu.lineColorSelect.value, 'k', 'karışık değer kutuyu değiştirmez');
+  const i = html.indexOf('id="textColorSelect"'); assert(html.slice(i, html.indexOf('</select>', i)).includes('value="#ffffff" selected'), 'yazı kutusu varsayılanı Beyaz');
 }
 // 8) Ctrl+tekerlek zoom: adim hareketle orantili ve sinirli (tek event en cok ~%16) — sabit x1.1 katlanmasi kalkti
 { const app = fs.readFileSync(__dirname + '/app.js', 'utf8'); const i = app.indexOf("canvas.addEventListener('wheel'"); const g = app.slice(i, app.indexOf('}, { passive: false });', i));
