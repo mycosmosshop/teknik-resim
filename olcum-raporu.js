@@ -22,13 +22,31 @@ function orTolerans(alt, ust) {
     const isaretli = v => (v > 0 ? '+' : v < 0 ? '-' : '') + yaz(v);
     return [u, a].filter(v => !isNaN(v)).map(isaretli).join(' / ') + ' mm';
 }
+// Ölçü sınırları: nominal + alt/üst tolerans (tolerans yoksa o sınır yok). Ondalık gürültüsü atılır (285-1.2 = 283.8)
+function orSinirlar(boyut, alt, ust) {
+    const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
+    const n = nominalDeger(boyut), kes = v => parseFloat(v.toFixed(6));
+    if (isNaN(n)) return {};
+    return { alt: isNaN(say(alt)) ? null : kes(n + say(alt)), ust: isNaN(say(ust)) ? null : kes(n + say(ust)) };
+}
+// Toleransı seçili standarttan farklı mı. Standardın karşılığı yoksa (Ra, çok küçük ölçü) ya da ölçüde tolerans yoksa uyarı yok.
+function orStandartDisi(o, standart) {
+    if (!standart) return false;
+    const say = x => { const t = String(x == null ? '' : x).trim().replace(',', '.'); return t === '' ? NaN : parseFloat(t); };
+    const b = standart(o.dimension) || {};
+    const a = say(o.lowerTolerance), u = say(o.upperTolerance), ba = say(b.alt), bu = say(b.ust);
+    if ((isNaN(a) && isNaN(u)) || (isNaN(ba) && isNaN(bu))) return false;
+    const farkli = (x, y) => (isNaN(x) !== isNaN(y)) || (!isNaN(x) && Math.abs(x - y) > 1e-9);
+    return farkli(a, ba) || farkli(u, bu);
+}
 // Seçilen çizimler → tablo satırları: Ref numarasına göre, çizim no grubun ilk satırında
-function orSatirlar(cizimler) {
+function orSatirlar(cizimler, standart) {
     const enKucuk = c => Math.min(...c.olculer.map(o => Number(o.number)));
     const satirlar = [];
     cizimler.filter(c => c.olculer.length).sort((x, y) => enKucuk(x) - enKucuk(y)).forEach(c => {
         [...c.olculer].sort((x, y) => Number(x.number) - Number(y.number)).forEach((o, i) => {
-            satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(o.lowerTolerance, o.upperTolerance) });
+            satirlar.push({ ref: Number(o.number), cizim: i === 0 ? (c.ad || '') : '', nominal: orNominal(o.dimension), tolerans: orTolerans(o.lowerTolerance, o.upperTolerance),
+                sinir: orSinirlar(o.dimension, o.lowerTolerance, o.upperTolerance), standartDisi: orStandartDisi(o, standart) });
         });
     });
     return satirlar;
@@ -40,7 +58,29 @@ function orCakisanNumaralar(cizimler) {
     return [...cakisan].sort((a, b) => a - b);
 }
 
-async function orDoldur(JSZipSinif, sablon, cizimler) {
+// L sütunundaki ölçüm metninden sayı: "Ø27,5", "R5", 27.5 hepsi okunur; Excel diline bağlı değil
+function orOlcumSayisi(hucre) {
+    let m = hucre + '&""';
+    [['.', ','], ['Ø', ''], ['ø', ''], ['R', ''], ['M', ''], [' ', '']].forEach(([a, b]) => { m = 'SUBSTITUTE(' + m + ',"' + a + '","' + b + '")'; });
+    return '_xlfn.NUMBERVALUE(' + m + ',",",".")';
+}
+// Kırmızı işaret koşullu biçimle: ölçüm girilince Excel'de anında yanar, ölçüm düzeltilince söner
+function orKosullar(veri, ilk, dxf) {
+    let sira = 1;
+    const kural = (ref, formul) => '<conditionalFormatting sqref="' + ref + '"><cfRule type="expression" dxfId="' + dxf + '" priority="' + (sira++) + '"><formula>' + orXml(formul) + '</formula></cfRule></conditionalFormatting>';
+    return veri.map((v, i) => {
+        const r = ilk + i, sinir = v.sinir || {}, kos = [];
+        const sayi = orOlcumSayisi('L' + r);
+        if (sinir.alt != null) kos.push(sayi + '<' + sinir.alt);
+        if (sinir.ust != null) kos.push(sayi + '>' + sinir.ust);
+        let x = '';
+        if (kos.length) x += kural('L' + r + ':N' + r, 'IFERROR(AND(L' + r + '<>"",OR(' + kos.join(',') + ')),FALSE)');
+        if (v.standartDisi) x += kural('F' + r, 'F' + r + '="' + v.tolerans + '"');   // Excel'de tolerans düzeltilince söner
+        return x;
+    }).join('');
+}
+
+async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     const zip = await JSZipSinif.loadAsync(sablon);
     const oku = p => { const f = zip.file(p); if (!f) throw new Error('Şablonda eksik parça: ' + p); return f.async('string'); };
 
@@ -68,7 +108,7 @@ async function orDoldur(JSZipSinif, sablon, cizimler) {
     if (!baslik || !altBolum) throw new Error('İkinci sekmede ölçü tablosu bulunamadı ("Nr." başlığı / "Onay" alt bölümü).');
     const son = satirNo(altBolum) - 1;                 // tablonun son satırı (alt çerçeveli)
 
-    const veri = orSatirlar(cizimler);
+    const veri = orSatirlar(cizimler, standart);
     const ek = Math.max(0, veri.length - (son - ilk + 1));
 
     // Sığmazsa: son satırın üstüne orta satırın biçimiyle satır açılır, altındaki her şey aşağı kayar.
@@ -96,7 +136,7 @@ async function orDoldur(JSZipSinif, sablon, cizimler) {
         }
     }
 
-    // Tablo satırları: eski değerler silinir (biçim kalır), yenileri yazılır. Ölçülen değer (L) ve uygun/uygun değil boş kalır.
+    // Tablo satırları: eski değerler silinir (biçim kalır), yenileri yazılır. Ölçümler (L, M, N) ve uygun/uygun değil boş kalır.
     const hucre = (ref, s, deger) => {
         const st = s ? ' s="' + s + '"' : '';
         if (deger === '' || deger == null) return '<c r="' + ref + '"' + st + '/>';
@@ -114,6 +154,22 @@ async function orDoldur(JSZipSinif, sablon, cizimler) {
         const govde = Object.keys(mevcut).sort((a, b) => orKolon(a) - orKolon(b)).map(k => hucre(k + n, mevcut[k], yaz[k])).join('');
         return acilis + govde + '</row>';
     });
+    // Ölçüm sütunu başlıkları (üç ölçüm: L, M, N)
+    [['L', '1. Ölçüm'], ['M', '2. Ölçüm'], ['N', '3. Ölçüm']].forEach(([k, b]) => {
+        xml = xml.replace(new RegExp('<c r="' + k + (ilk - 1) + '"( s="\\d+")?/>'), (m, st) => hucre(k + (ilk - 1), st ? /\d+/.exec(st)[0] : '', b));
+    });
+    // Koşullu biçim: önceki rapordan kalan tablo kuralları silinir (rapor şablon olarak seçilmiş olabilir), yenileri eklenir
+    xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="([A-Z]+)(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, k, r) => (+r >= ilk && +r <= son + ek ? '' : m));
+    let stil = await oku('xl/styles.xml');
+    const dxfSayi = /<dxfs\b[^>]*count="(\d+)"/.exec(stil), dxf = dxfSayi ? +dxfSayi[1] : 0;
+    const kirmizi = '<dxf><font><b/><color rgb="FFFFFFFF"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor rgb="FFFF0000"/></patternFill></fill></dxf>';
+    stil = /<dxfs\b[^>]*\/>/.test(stil) ? stil.replace(/<dxfs\b[^>]*\/>/, '<dxfs count="1">' + kirmizi + '</dxfs>')
+        : /<dxfs\b/.test(stil) ? stil.replace(/<dxfs\b[^>]*>/, '<dxfs count="' + (dxf + 1) + '">').replace('</dxfs>', kirmizi + '</dxfs>')
+        : stil.replace('</cellStyles>', '</cellStyles><dxfs count="1">' + kirmizi + '</dxfs>');
+    zip.file('xl/styles.xml', stil);
+    const kosullar = orKosullar(veri, ilk, dxf);
+    const yer = /<(dataValidations|hyperlinks|printOptions|pageMargins)\b/.exec(xml);
+    if (kosullar) xml = yer ? xml.slice(0, yer.index) + kosullar + xml.slice(yer.index) : xml.replace('</worksheet>', kosullar + '</worksheet>');
     zip.file(sekmeYol, xml);
 
     // Formül sırası dosyası satır kayınca bozuk sayılır: silinir, Excel kendisi kurar; kapak bağlantıları açılışta hesaplanır
@@ -135,6 +191,13 @@ function orSablonOku() {
 function orBase64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
 function orBaytlar(b64) { const s = atob(b64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; }
 
+// Seçili standardın bu ölçü için toleransı: ölçü eklerken kullanılan kuralın aynısı
+function orStandartTolerans(boyut) {
+    const b = { dimension: boyut };
+    applyDefaultTolerances(b);
+    return { alt: b.lowerTolerance, ust: b.upperTolerance };
+}
+
 function orPencereAc() {
     const eski = document.getElementById('olcumRaporuModal'); if (eski) eski.remove();
     const cizimler = [];
@@ -155,7 +218,8 @@ function orPencereAc() {
             <div id="orListe" style="margin-bottom:8px"></div>
             <label class="btn btn-info" style="margin:0;cursor:pointer;padding:5px 10px;font-size:12px">➕ JSON kayıttan çizim ekle
                 <input type="file" id="orJson" accept=".json" multiple style="display:none"></label>
-            <div id="orUyari" style="color:#c0392b;font-weight:bold;margin-top:10px"></div>
+            <div id="orStandart" style="margin-top:10px;font-size:12px"></div>
+            <div id="orUyari" style="color:#c0392b;font-weight:bold;margin-top:6px"></div>
         </div>
         <div class="modal-buttons">
             <button id="orOlustur" class="btn btn-success">Raporu oluştur</button>
@@ -185,6 +249,10 @@ function orPencereAc() {
         uyar();
     }
     function uyar() {
+        updateActiveSystemText();
+        const ad = document.getElementById('activeSystemText');
+        const disi = orSatirlar(seciliCizimler(), orStandartTolerans).filter(v => v.standartDisi).length;
+        $('orStandart').textContent = 'Tolerans kontrolü: ' + (ad ? ad.textContent : 'seçili standart') + (disi ? ' — ' + disi + ' ölçünün toleransı farklı, raporda kırmızı yanacak' : ' — hepsi uygun');
         const c = orCakisanNumaralar(seciliCizimler());
         $('orUyari').textContent = c.length ? 'Seçili çizimlerde aynı balon numarası var: ' + c.slice(0, 10).join(', ') + (c.length > 10 ? '…' : '') + '. Sonraki çizimin Başlangıç numarasını değiştirip kaydedin.' : '';
     }
@@ -217,7 +285,7 @@ function orPencereAc() {
         const secili = seciliCizimler();
         if (!secili.some(c => c.olculer.length)) { alert('Seçili çizimde ölçü yok.'); return; }
         try {
-            const cikti = await orDoldur(JSZip, orBaytlar(s.veri), secili);
+            const cikti = await orDoldur(JSZip, orBaytlar(s.veri), secili, orStandartTolerans);
             const url = URL.createObjectURL(new Blob([cikti], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
             const a = document.createElement('a'); a.href = url;
             a.download = s.ad.replace(/\.xlsx$/i, '') + ' - olcum ' + new Date().toISOString().slice(0, 10) + '.xlsx';

@@ -1,14 +1,25 @@
 // Ölçüm raporu (olcum-raporu.js): şablona yazma, satır uzatma, çok çizim. Şablon sentetik (gerçeği depoya girmez).
 //   NODE_PATH=D:/Yazılım/gantt-chart/node_modules node test_olcum_raporu.cjs
 const fs = require('fs'), assert = require('assert'), JSZip = require('jszip');
-const F = new Function('document', 'localStorage', fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
-  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar};')({ addEventListener() { } }, {});
+const appKod = fs.readFileSync(__dirname + '/app.js', 'utf8'), nd = appKod.indexOf('function nominalDeger(');
+const F = new Function('document', 'localStorage', appKod.slice(nd, appKod.indexOf('\n}', nd) + 2) + '\n' + fs.readFileSync(__dirname + '/olcum-raporu.js', 'utf8') +
+  '\nreturn {orDoldur, orSatirlar, orNominal, orTolerans, orCakisanNumaralar, orSinirlar, orStandartDisi};')({ addEventListener() { } }, {});
 
 // Biçim dönüşümleri örnek rapordaki görünümle aynı
 assert.strictEqual(F.orNominal('285'), 285); assert.strictEqual(F.orNominal('1033,2'), 1033.2); assert.strictEqual(F.orNominal('234.2'), 234.2);
 assert.strictEqual(F.orNominal('Ø27.5'), 'Ø27,5'); assert.strictEqual(F.orNominal('R5'), 'R5'); assert.strictEqual(F.orNominal('40 ±0.1'), 40); assert.strictEqual(F.orNominal(''), '');
 assert.strictEqual(F.orTolerans('-1.2', '+1.2'), '± 1,2 mm'); assert.strictEqual(F.orTolerans('-0,5', '0,5'), '± 0,5 mm'); assert.strictEqual(F.orTolerans('-2', '2'), '± 2 mm');
 assert.strictEqual(F.orTolerans('-0.2', '+0.5'), '+0,5 / -0,2 mm'); assert.strictEqual(F.orTolerans('0', '0.5'), '+0,5 / 0 mm'); assert.strictEqual(F.orTolerans('', ''), '');
+
+// Sınırlar ve standart kontrolü
+assert.deepStrictEqual(F.orSinirlar('285', '-1.2', '+1.2'), { alt: 283.8, ust: 286.2 }); assert.deepStrictEqual(F.orSinirlar('Ø27,5', '-2', '2'), { alt: 25.5, ust: 29.5 });
+assert.deepStrictEqual(F.orSinirlar('R5', '', ''), { alt: null, ust: null }); assert.deepStrictEqual(F.orSinirlar('yazı', '-1', '1'), {});
+const std = d => (d === 'Ra 3.2' ? {} : { alt: '-1,2', ust: '+1,2' });
+assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, std), false, 'aynı');
+assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-2', upperTolerance: '+2' }, std), true, 'farklı');
+assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+0.5' }, std), true, 'tek taraf farklı');
+assert.strictEqual(F.orStandartDisi({ dimension: 'Ra 3.2', lowerTolerance: '-1', upperTolerance: '+1' }, std), false, 'standart karşılığı yok');
+assert.strictEqual(F.orStandartDisi({ dimension: '285' }, std), false, 'toleranssız ölçü'); assert.strictEqual(F.orStandartDisi({ dimension: '285', lowerTolerance: '-2', upperTolerance: '2' }), false, 'standart verilmedi');
 
 // Çizimler Ref sırasına dizilir; çizim no yalnız grubun ilk satırında
 const iki = [{ ad: 'B', olculer: [{ number: 22, dimension: '5' }, { number: 21, dimension: '4' }] }, { ad: 'A', olculer: [{ number: 1, dimension: '3' }] }, { ad: 'BOS', olculer: [] }];
@@ -17,13 +28,14 @@ assert.deepStrictEqual(F.orCakisanNumaralar(iki), []);
 assert.deepStrictEqual(F.orCakisanNumaralar([{ olculer: [{ number: 5 }, { number: 6 }] }, { olculer: [{ number: 6 }] }]), [6], 'çakışan numara');
 
 // Sentetik şablon: başlık 4-5, tablo 6-9 (9 alt çerçeveli), alt bölüm 10, altında birleşik hücre, bağlantı, görsel, baskı alanı
-const sat = (r, s, v) => `<row r="${r}"><c r="A${r}" s="1"/><c r="B${r}" s="${s}"${v == null ? '/>' : ` t="s"><v>${v}</v></c>`}<c r="D${r}" s="2"/><c r="E${r}" s="3"/><c r="F${r}" s="4"/><c r="L${r}" s="5"><v>999</v></c><c r="O${r}" s="6"/></row>`;
+const sat = (r, s, v) => `<row r="${r}"><c r="A${r}" s="1"/><c r="B${r}" s="${s}"${v == null ? '/>' : ` t="s"><v>${v}</v></c>`}<c r="D${r}" s="2"/><c r="E${r}" s="3"/><c r="F${r}" s="4"/><c r="L${r}" s="5"><v>999</v></c><c r="M${r}" s="5"/><c r="N${r}" s="5"/><c r="O${r}" s="6"/></row>`;
 async function sablon() {
   const z = new JSZip();
   z.file('[Content_Types].xml', '<Types><Override PartName="/xl/calcChain.xml" ContentType="x"/></Types>');
   z.file('xl/workbook.xml', '<workbook><sheets><sheet name="kapak" sheetId="1" r:id="rId1"/><sheet name="olcu" sheetId="2" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">kapak!$A$1:$B$2</definedName><definedName name="_xlnm.Print_Area" localSheetId="1">olcu!$A$1:$T$12</definedName></definedNames><calcPr calcId="1"/></workbook>');
   z.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId9" Target="calcChain.xml" Type="calcChain"/></Relationships>');
   z.file('xl/calcChain.xml', '<calcChain/>');
+  z.file('xl/styles.xml', '<styleSheet><cellStyles/><dxfs count="0"/></styleSheet>');
   z.file('xl/sharedStrings.xml', '<sst><si><t>Nr.</t></si><si><t>Tedarikci Onayı:</t></si><si><t>Sabit</t></si></sst>');
   z.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData></worksheet>');
   z.file('xl/worksheets/sheet2.xml', `<worksheet><dimension ref="A1:T12"/><sheetData>${sat(5, 1, 0)}${sat(6, 7)}${sat(7, 7)}${sat(8, 7)}${sat(9, 8)}${sat(10, 9, 1)}<row r="11"><c r="E11"><f>kapak!A1</f><v>7</v></c></row><row r="12"><c r="A12" t="s"><v>2</v></c></row></sheetData><mergeCells count="2"><mergeCell ref="A12:D12"/><mergeCell ref="B5:C5"/></mergeCells><hyperlinks><hyperlink ref="E11" r:id="rId1"/></hyperlinks><drawing r:id="rId3"/></worksheet>`);
@@ -35,6 +47,21 @@ const satir = (x, r) => (new RegExp(`<row\\b[^>]*\\br="${r}"[\\s\\S]*?</row>`).e
 const olc = (n, bas = 1) => Array.from({ length: n }, (_, i) => ({ number: bas + i, dimension: i % 2 ? 'Ø1.5' : String(10 + i), lowerTolerance: '-0.5', upperTolerance: '+0.5' }));
 
 (async () => {
+  // Kırmızı kurallar: L:N ölçüm sınırı, F yalnız standart dışında; önceki rapor şablon olsa da kural birikmez; başlıklar yazılır
+  { const sab = await sablon();
+    const b = await F.orDoldur(JSZip, sab, [{ ad: 'C', olculer: [{ number: 1, dimension: '285', lowerTolerance: '-1.2', upperTolerance: '+1.2' }, { number: 2, dimension: 'Ø27.5', lowerTolerance: '-2', upperTolerance: '2' }, { number: 3, dimension: '9' }] }], d => ({ alt: '-1.2', ust: '+1.2' }));
+    const zk = await JSZip.loadAsync(b), xk = await zk.file('xl/worksheets/sheet2.xml').async('string');
+    assert(xk.includes('sqref="L6:N6"') && xk.includes('sqref="L7:N7"') && !xk.includes('L8:N8'), 'ölçüm kuralı toleransı olan satırlarda');
+    assert(xk.includes('&lt;283.8') && xk.includes('&gt;286.2') && xk.includes('&lt;25.5') && xk.includes('_xlfn.NUMBERVALUE'), 'sınırlar formülde');
+    assert(xk.includes('sqref="F7"') && !xk.includes('sqref="F6"') && xk.includes('F7="± 2 mm"'), 'F yalnız standart dışı');
+    assert(xk.indexOf('<conditionalFormatting') > xk.indexOf('</mergeCells>') && xk.indexOf('</conditionalFormatting><hyperlinks') > 0, 'şema sırası');
+    assert(satir(xk, 5).includes('2. Ölçüm') && satir(xk, 5).includes('3. Ölçüm') && satir(xk, 5).includes('<v>999</v>'), 'boş başlık hücreleri yazılır, dolu olan ezilmez');
+    const st = await zk.file('xl/styles.xml').async('string'); assert(/<dxfs count="1"><dxf>.*FFFF0000/.test(st), 'kırmızı biçim');
+    const iki = await F.orDoldur(JSZip, b, [{ ad: 'C', olculer: [{ number: 1, dimension: '10', lowerTolerance: '-1', upperTolerance: '1' }] }]);
+    const x2 = await (await JSZip.loadAsync(iki)).file('xl/worksheets/sheet2.xml').async('string');
+    assert.strictEqual((x2.match(/<conditionalFormatting/g) || []).length, 1, 'eski kurallar silinmeli'); assert(!x2.includes('283.8'), 'eski sınır kalmamalı');
+    assert(/dxfId="1"/.test(x2), 'yeni biçim numarası');
+  }
   // Sığan: biçim kalır, eski değerler (L dahil) silinir, alt bölüm yerinde
   let z = await JSZip.loadAsync(await F.orDoldur(JSZip, await sablon(), [{ ad: 'C-1', olculer: olc(2) }]));
   let x = await z.file('xl/worksheets/sheet2.xml').async('string');
