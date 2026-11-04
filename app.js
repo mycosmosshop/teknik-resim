@@ -623,6 +623,7 @@ function handleFileUpload(e) {
     const fileName = file.name.toLowerCase();
     
     console.log('📁 Dosya seçildi:', file.name, '| Tip:', fileType, '| Boyut:', file.size);
+    window.__cizimAdi = file.name.replace(/\.[^.]+$/, '');   // ölçüm raporunda çizim no önerisi
     
     // fileName elementi varsa güncelle (optional)
     const fileNameElement = document.getElementById('fileName');
@@ -4919,6 +4920,7 @@ function saveBackupToFile() {
             version: '2.0',
             timestamp: new Date().toISOString(),
             balloonCounter: balloonCounter,
+            cizimAdi: window.__cizimAdi || '',
             annotations: annotations,
             textAnnotations: (typeof textAnnotations !== 'undefined' ? textAnnotations : []),
             image: (currentImage && currentImage.src) ? currentImage.src : null, // temiz çizim (balonsuz)
@@ -4963,6 +4965,7 @@ function loadBackupFile(file) {
             annotations = data.annotations;
             textAnnotations = data.textAnnotations || [];
             balloonCounter = data.balloonCounter || annotations.length + 1;
+            window.__cizimAdi = data.cizimAdi || '';
             
             // Eski yedekler için geriye dönük uyumluluk
             annotations.forEach(ann => {

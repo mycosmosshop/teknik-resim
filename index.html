@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tiff.js@1.0.0/tiff.min.js"></script>
 </head>
@@ -215,6 +216,7 @@
                         <button id="exportBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">🖼️ PNG</button>
                         <button id="exportPdfBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📄 PDF</button>
                         <button id="exportExcelBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">📊 Excel</button>
+                        <button id="olcumRaporuBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;" title="Balonlu ölçüleri Excel ölçüm raporu şablonuna yazar; birden çok çizim seçilebilir">📋 Rapor</button>
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button id="resetDefaultsBtn" class="btn btn-warning" style="padding: 6px 12px; font-size: 12px; width: 100%;">🔄 Varsayılan</button>
@@ -392,7 +394,8 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <!-- ?v= : tarayıcı/GitHub Pages önbelleği — her yayında artır, yoksa kullanıcı yeni kodu 10 dk+ görmez -->
-    <script src="app.js?v=20261104a"></script>
-    <script src="ai-balloon.js?v=20261104a"></script>
+    <script src="app.js?v=20261104b"></script>
+    <script src="ai-balloon.js?v=20261104b"></script>
+    <script src="olcum-raporu.js?v=20261104b"></script>
 </body>
 </html>

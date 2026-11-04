@@ -132,7 +132,7 @@ assert(html.includes('id="renumberOnDelete" checked'), 'seÃ§enek yok / tikli deÄ
       const canvas = { width: 800, height: 600 }, autoNumberDirectionSelect = { value: yon };
       const document = { getElementById: id => id === 'startNumberInput' ? girdi : id === 'tableBody' ? { innerHTML: '' } : null };
       const showNotification = m => { sonBildirim = m; }, redrawCanvas = () => { }, rebuildTable = () => { tablo++; }, addTableRow = () => { }, fitToScreen = () => { }, alert = m => { throw new Error(m); };
-      const console = { log() { }, warn() { }, error(e) { throw e; } };
+      const console = { log() { }, warn() { }, error(e) { throw e; } }; const window = {};
       class FileReader { readAsText(f) { this.onload({ target: { result: f } }); } }
       ${govde('balonBaslangicNo')}\n${govde('balonlariKaydir')}\n${govde('setStartNumber')}\n${govde('applyAutoNumbering')}\n${govde('renumberAnnotations')}
       ${govde('balonSaatYonuSirala')}\n${govde('balonlarHizali')}\n${govde('balonYay')}\n${govde('autoAlignBalloons')}\n${govde('loadBackupFile')}
