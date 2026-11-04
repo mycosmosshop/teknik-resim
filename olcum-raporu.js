@@ -253,15 +253,17 @@ async function orDoldur(JSZipSinif, sablon, cizimler, standart) {
     return orBitir(zip, oku, wb, wbRels);
 }
 
-// ── Kontrol planı (PL 41): "Dimension N" satırları balonlardan yeniden yazılır; malzeme, etiket, paketleme satırları aynen kalır ──
-// Numune, sıklık, ekipman, yöntem, özel karakteristik balonda yok: aynı nominalli plan satırından, yoksa en yakın nominalli satırdan alınır.
+// ── Kontrol planı (PL 41): yalnız ölçüler. Şablondaki "Dimension N" satırları balonlardan yeniden yazılır (sıra no = N = balon no);
+//    ölçünün bağlı olduğu operasyon başlığı kalır, diğer operasyonlar ve ölçü dışı kontroller (malzeme, görsel, etiket, paketleme) silinir ──
+// Numune, sıklık, ekipman, yöntem balonda yok: aynı nominalli plan satırından, yoksa en yakın nominalli satırdan alınır.
+// Özel karakteristik (SC/CC) alınmaz: şablon başka parçanın planı olabilir, aynı nominal aynı özellik demek değil. "-" yazılır, elle işaretlenir.
 const OR_PLAN_OLCU = /^\s*(dimension|ölçü|boyut)\s*\d+\s*$/i;
-// Örnek satır: aynı nominal (SC/CC dâhil) ya da özel karakteristiği olmayan en yakın nominal (başka ölçüye SC bulaşmasın)
+// Örnek satır: özel karakteristiği olmayan satırlardan aynı ya da en yakın nominal (biçimi de SC'siz gelsin)
 function orPlanOrnek(satirlar, nominal) {
     const yazi = String(nominal).replace('.', ','), sayi = nominalDeger(yazi);
-    const ayni = satirlar.find(x => x.metin === yazi) || satirlar.find(x => x.sayi === sayi);
-    if (ayni) return ayni;
     const duz = satirlar.filter(x => x.ozel === '-' || x.ozel === ''), liste = duz.length ? duz : satirlar;
+    const ayni = liste.find(x => x.metin === yazi) || liste.find(x => x.sayi === sayi);
+    if (ayni) return ayni;
     const fark = x => (isNaN(x.sayi) || isNaN(sayi) ? Infinity : Math.abs(x.sayi - sayi));
     return liste.reduce((en, x) => (fark(x) < fark(en) ? x : en), liste[0]);
 }
@@ -303,16 +305,25 @@ async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
     if (!olcu.length) throw new Error('Kontrol planında ölçü satırı bulunamadı (F sütununda "Dimension 1" gibi).');
     const ornekler = olcu.map(r => { const metin = orHucreMetni(r, 'G', ortak); return { r, no: satirNo(r), metin, sayi: nominalDeger(metin), ozel: orHucreMetni(r, 'O', ortak) }; });
     const nolar = ornekler.map(o => o.no), ilk = nolar[0], veri = orSatirlar(cizimler, standart);
-    const kelime = /\S+/.exec(orHucreMetni(olcu[0], 'F', ortak))[0], aIlk = orHucreMetni(olcu[0], 'A', ortak);
-    let sira = /^\d+$/.test(aIlk) ? +aIlk : null;
-    // Eski satır → yeni satır: ölçü bloğu ilk satırda toplanır, sonrası blok kadar kayar (satır sayısı artar da azalır da)
+    const kelime = /\S+/.exec(orHucreMetni(olcu[0], 'F', ortak))[0];
+    // Tablo: başlık satırı ile son numaralı satır arası. Altındaki not/imza satırları durur.
+    const tumu = (xml.match(SATIR) || []).map(r => ({ n: satirNo(r), a: orHucreMetni(r, 'A', ortak), f: orHucreMetni(r, 'F', ortak) }));
+    const numarali = tumu.filter(t => /^\d+$/.test(t.a)).map(t => t.n), ilkVeri = numarali[0], sonVeri = numarali[numarali.length - 1];
+    const ustte = tumu.filter(t => t.n < ilkVeri && t.a && t.f), baslik = ustte.length ? ustte[ustte.length - 1].n : ilkVeri - 1;
+    const bolumler = tumu.filter(t => t.n > baslik && t.n < ilk && t.a && !t.f && !/^\d+$/.test(t.a));
+    const bolum = bolumler.length ? bolumler[bolumler.length - 1].n : 0;   // ölçülerin operasyon başlığı
+    const gider = n => n > baslik && n <= sonVeri && n !== bolum;
+    const giderSayi = n => tumu.filter(t => t.n < n && gider(t.n)).length;
+    const blok = ilk - giderSayi(ilk), sonBlok = blok + Math.max(veri.length - 1, 0);
+    // Eski satır → yeni satır: silinen satıra bakan başvuru (baskı alanı vb.) ölçü bloğunda kalır, sonrası kayar
     const yeni = n => { const i = nolar.indexOf(n);
-        if (i >= 0) return ilk + Math.min(i, Math.max(veri.length - 1, 0));
-        return n - nolar.filter(x => x < n).length + (n > ilk ? veri.length : 0); };
+        if (i >= 0) return blok + Math.min(i, sonBlok - blok);
+        if (gider(n)) return n < ilk ? blok : sonBlok;
+        return n - giderSayi(n) + (n > ilk ? veri.length : 0); };
 
-    // Önceki rapordan kalan kurallar ve ölçü satırındaki birleşikler satırlarla gider
-    xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="[A-Z]+(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, r) => (nolar.includes(+r) ? '' : m));
-    xml = xml.replace(/<mergeCell ref="[A-Z]+(\d+):[^"]*"\/>/g, (m, r) => (nolar.includes(+r) ? '' : m));
+    // Önceki rapordan kalan kurallar ve silinen satırların birleşikleri satırlarla gider
+    xml = xml.replace(/<conditionalFormatting\b[^>]*\bsqref="[A-Z]+(\d+)[^"]*"[^>]*>[\s\S]*?<\/conditionalFormatting>/g, (m, r) => (gider(+r) ? '' : m));
+    xml = xml.replace(/<mergeCell ref="[A-Z]+(\d+):[^"]*"\/>/g, (m, r) => (gider(+r) ? '' : m));
     xml = xml.replace(/<mergeCells\b[^>]*>/, () => '<mergeCells count="' + (xml.match(/<mergeCell /g) || []).length + '">');
     let wb;
     ({ xml, wb } = await orKaydir(zip, oku, xml, a.wb, a.yol(sekme), sekme, yeni));
@@ -320,18 +331,15 @@ async function orPlanDoldur(JSZipSinif, sablon, cizimler, standart) {
     xml = xml.replace(SATIR, r => {
         const n = satirNo(r);
         if (n === ilk) return veri.map((v, i) => {
-            const y = ilk + i, sinir = v.sinir || {}, olcuMetni = String(v.nominal), adim = /^\s*R[az]\s*\d/i.test(olcuMetni) ? 'µm' : /°/.test(olcuMetni) ? '°' : 'mm';
-            const yaz = { F: kelime + ' ' + v.ref, G: olcuMetni.replace('.', ','), H: adim, I: sinir.alt != null ? sinir.alt : '-', J: sinir.ust != null ? sinir.ust : '-' };
+            const y = blok + i, sinir = v.sinir || {}, olcuMetni = String(v.nominal), adim = /^\s*R[az]\s*\d/i.test(olcuMetni) ? 'µm' : /°/.test(olcuMetni) ? '°' : 'mm';
+            const yaz = { A: v.ref, F: kelime + ' ' + v.ref, G: olcuMetni.replace('.', ','), H: adim, I: sinir.alt != null ? sinir.alt : '-', J: sinir.ust != null ? sinir.ust : '-', O: '-' };
             if (adim !== 'mm') { yaz.P = '-'; yaz.Q = '-'; }     // Ra, açı: ölçü aleti mm satırından tahmin edilmez
-            if (sira !== null) yaz.A = sira++;
             return orSatirYaz(satirTasi(orPlanOrnek(ornekler, v.nominal).r, y), y, yaz);
         }).join('');
-        if (nolar.includes(n)) return '';
-        const t = satirTasi(r, yeni(n));
-        return n > ilk && sira !== null && /^\d+$/.test(orHucreMetni(r, 'A', ortak)) ? orSatirYaz(t, yeni(n), { A: sira++ }) : t;
+        return gider(n) ? '' : satirTasi(r, yeni(n));
     });
     const dxf = await orKirmiziEkle(zip, oku);
-    zip.file(a.yol(sekme), orKosulEkle(xml, orPlanKosullar(veri, ilk, dxf, standart)));
+    zip.file(a.yol(sekme), orKosulEkle(xml, orPlanKosullar(veri, blok, dxf, standart)));
     return orBitir(zip, oku, wb, wbRels);
 }
 
@@ -438,7 +446,7 @@ function orPencereAc() {
         if (!sinifSecildi) $('orSinif').value = orEnUygunSinif(seciliCizimler());
         const satirlar = orSatirlar(seciliCizimler(), orStandart($('orSinif').value)), disi = satirlar.filter(v => v.standartDisi).length;
         $('orStandart').textContent = 'Toleranslar bu sınıfa göre yazılır (' + satirlar.length + ' ölçü). ' + (disi ? disi + ' ölçüde sonradan girilen farklı tolerans var, raporda kırmızı yanar.' : 'Farklı tolerans yok.') +
-            (tur() === 'plan' ? ' Yalnız "Dimension" satırları değişir, diğer satırlar aynen kalır. Numune, sıklık, yöntem aynı ya da en yakın nominalli satırdan gelir; SC/CC yalnız aynı nominalde gelir, kontrol edin.' : '');
+            (tur() === 'plan' ? ' Plan yalnız ölçülerden oluşur, sıra no = balon no; diğer operasyonlar çıkar. Numune, sıklık, yöntem aynı ya da en yakın nominalli satırdan gelir, kontrol edin. SC/CC gelmez, elle işaretleyin.' : '');
         const c = orCakisanNumaralar(seciliCizimler());
         $('orUyari').textContent = c.length ? 'Seçili çizimlerde aynı balon numarası var: ' + c.slice(0, 10).join(', ') + (c.length > 10 ? '…' : '') + '. Sonraki çizimin Başlangıç numarasını değiştirip kaydedin.' : '';
     }
