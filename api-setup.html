@@ -427,6 +427,7 @@
             }, 3000);
             
             // Statusları güncelle
+            updateStatus('gemini', document.getElementById('geminiEnabled').checked);
             updateStatus('ocrspace', document.getElementById('ocrspaceEnabled').checked);
             updateStatus('google', document.getElementById('googleEnabled').checked);
             updateStatus('mathpix', document.getElementById('mathpixEnabled').checked);
@@ -456,6 +457,10 @@
         }
         
         // Checkbox değiştiğinde status güncelle
+        document.getElementById('geminiEnabled').addEventListener('change', (e) => {
+            updateStatus('gemini', e.target.checked);
+        });
+
         document.getElementById('ocrspaceEnabled').addEventListener('change', (e) => {
             updateStatus('ocrspace', e.target.checked);
         });
