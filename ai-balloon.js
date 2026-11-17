@@ -222,21 +222,29 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
     const mS = inceMi(satK.map(v => v >= pw * 0.2 ? 1 : 0), ph), mX = inceMi(sutK.map(v => v >= ph * 0.2 ? 1 : 0), pw);
     for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (mS[y] || mX[x]) p[y * pw + x] = 0;
     // (1 px morfolojik açma DENENDİ: 6000 px PDF render'da rakam kalınlığı da 2 px → rakamlar parçalandı; kaldırıldı)
+    // 0b) kalınlık: her mürekkep pikselinin boşluğa uzaklığı (satranç tahtası). Bileşenin en kalın yeri, içi dolu ok ucunu
+    //   rakamdan ayırır: ince tek çizgili yazı tipinde (TEMSA 9802-8260) rakamlar seyrek kaldı, tohum dolu ok ucu oldu,
+    //   26/29 kutu ok ucuna oturup doğrulamada "yazı yok" diye atıldı (ölçüldü).
+    const uz = new Uint16Array(pw * ph);
+    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) { const i = y * pw + x; if (!p[i]) continue;
+        uz[i] = 1 + Math.min(x ? uz[i - 1] : 0, y ? uz[i - pw] : 0, x && y ? uz[i - pw - 1] : 0, y && x < pw - 1 ? uz[i - pw + 1] : 0); }
+    for (let y = ph - 1; y >= 0; y--) for (let x = pw - 1; x >= 0; x--) { const i = y * pw + x; if (!p[i]) continue;
+        uz[i] = Math.min(uz[i], 1 + Math.min(x < pw - 1 ? uz[i + 1] : 0, y < ph - 1 ? uz[i + pw] : 0, x < pw - 1 && y < ph - 1 ? uz[i + pw + 1] : 0, y < ph - 1 && x ? uz[i + pw - 1] : 0)); }
     // 1) bağlı bileşenler (8-komşuluk, yığınla)
     const etiket = new Int32Array(pw * ph); const bil = []; const yigin = new Int32Array(pw * ph);
     for (let s = 0; s < pw * ph; s++) {
         if (!p[s] || etiket[s]) continue;
         const id = bil.length + 1; let top = 0; yigin[top++] = s; etiket[s] = id;
-        let x0 = pw, y0 = ph, x1 = -1, y1 = -1, n = 0;
+        let x0 = pw, y0 = ph, x1 = -1, y1 = -1, n = 0, kalin = 0;
         while (top) {
-            const i = yigin[--top]; const x = i % pw, y = (i - x) / pw; n++;
+            const i = yigin[--top]; const x = i % pw, y = (i - x) / pw; n++; if (uz[i] > kalin) kalin = uz[i];
             if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
             for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
                 if (!dx && !dy) continue; const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= pw || yy >= ph) continue;
                 const j = yy * pw + xx; if (p[j] && !etiket[j]) { etiket[j] = id; yigin[top++] = j; }
             }
         }
-        bil.push({ x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1, n });
+        bil.push({ x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1, n, kalin });
     }
     if (!bil.length) return null;
     // 2) yazı adayı: ince uzun çizgi değil, pencereyi kaplayan şekil değil, içi boş büyük yay/daire değil
@@ -252,6 +260,10 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
         //   Eğik yazılmış "R" harfi de kareye yakın ve seyrek (22×24, ≈0,25) — ayrım BOYUT: tek karakter pencereye göre
         //   küçüktür (R*0.22 = 6000 px'te 31 px; delik 38 px), 20 px sabiti R50/R60/R5'i siliyordu (ölçüldü).
         if (Math.min(b.w, b.h) >= R * 0.22 && Math.abs(b.w - b.h) <= 10 && doluluk < 0.36) return false;   // 4 px kalın çember ≈ 0,33
+        // içi dolu şekil (ok ucu, karşılıklı çift ok ucu, gövdeli ok): en kalın yeri DAR kenarının ≥ %25'i. Rakamda çizgi
+        //   kalınlığı dar kenarın ≈ %10–15'i (6FA kalın "8": 25 px genişlik, 3); ok ucu ≈ %40. "1" dar ve dolu ama kutusunu
+        //   tam doldurur (doluluk ≥ 0,75), üçgen yarı doldurur. Nokta/virgül küçük olduğundan (R*0,08 altı) kurala girmez.
+        if (Math.max(b.w, b.h) >= R * 0.08 && b.kalin >= 3 && b.kalin >= 0.25 * Math.min(b.w, b.h) && doluluk < 0.75) return false;   // üçgen kutusunu ≈ yarı doldurur
         return b.w >= 2 && b.h >= 2;
     });
     if (!aday.length) return null;
@@ -265,9 +277,16 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
     const boyutlu = aday.filter(b => b.h >= 5 && b.w >= 5).sort((a, b) => uzak(a) - uzak(b));
     // tohum: yakındaki (≤ R*0,5) rakamsı adaylardan EN BÜYÜĞÜ — en yakını almak eğik "0.1"de NOKTAYI (6×5) tohum yapıp
     //   6×5'lik kutu üretiyordu (ölçüldü); nokta/virgül (max kenar < R*0,08) tohum olamaz
-    const rakamsi = boyutlu.filter(b => dol(b) >= 0.28 && Math.max(b.w, b.h) >= R * 0.08);
+    // dar kenar da karakter boyunda olmalı: maskeyle ikiye bölünen ok ucu yarısı (22×6, doluluk 0,5) "rakamsı" sayılıp
+    //   ince yazının yanında tohum oluyordu (TEMSA "36", ölçüldü)
+    const rakamsi = boyutlu.filter(b => dol(b) >= 0.28 && Math.max(b.w, b.h) >= R * 0.08 && Math.min(b.w, b.h) >= R * 0.06);
     const yakinR = rakamsi.filter(b => uzak(b) <= R * 0.5).sort((a, b) => b.w * b.h - a.w * a.h);
-    const tohum = yakinR[0] || ((rakamsi.length && uzak(rakamsi[0]) <= R * 0.8) ? rakamsi[0] : boyutlu[0]);
+    // model noktası bir harfin ÜSTÜNDEYSE (kutusu ±3 px içinde) tohum o harf: ince yazı tipinde rakam seyrek, "rakamsı"
+    //   eşiğine (0,28) girmiyor; yanındaki Ø işareti ya da başka parça tohum olup "13"ü dışarıda bırakıyordu (ölçüldü)
+    const ustunde = boyutlu.filter(b => Math.max(b.w, b.h) >= R * 0.08 && mx0 >= b.x0 - 3 && mx0 <= b.x1 + 3 && my0 >= b.y0 - 3 && my0 <= b.y1 + 3);
+    // son çare en yakın bileşen — karakter boyundakiler önce (ondalık nokta tohum olup 4 px kutu üretiyordu, TEMSA "38.4")
+    const sonCare = boyutlu.find(b => Math.max(b.w, b.h) >= R * 0.08) || boyutlu[0];
+    const tohum = ustunde[0] || yakinR[0] || ((rakamsi.length && uzak(rakamsi[0]) <= R * 0.8) ? rakamsi[0] : sonCare);
     if (!tohum || uzak(tohum) > R * 0.8) return null;
     const kume = [tohum]; const alindi = new Set(kume); let degisti = true;
     while (degisti) {
@@ -283,7 +302,15 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
                 const kb = Math.max(tohum.h, tohum.w), bb = Math.max(b.h, b.w);
                 const benzer = bb >= kb * 0.5 && bb <= kb * 1.5;                                     // karakter boyutları yakın
                 const kucuk = bb <= kb * 0.45;                                                       // nokta / virgül
-                const yakin = Math.hypot(bX, bY) <= kb * 0.6;                                        // rakam arası boşluk ≤ 0,6 h
+                // aynı satırda/sütunda hizalı karakterde boşluk 1,0 h'ye kadar: geniş aralıklı ince yazı tipinde (TEMSA)
+                //   "1 1 9 . 4" karakterleri 0,6 h'den açık, kutu tek "1" kalıyordu (ölçüldü); eğik/hizasız karakter 0,6 h
+                const oY0 = Math.min(k.y1, b.y1) - Math.max(k.y0, b.y0), oX0 = Math.min(k.x1, b.x1) - Math.max(k.x0, b.x0);
+                // yön tohumun duruşundan: dik harf (h ≥ w) → yan yana komşu, yatık harf (90° döndürülmüş yazı) → alt alta;
+                //   ikisine birden izin vermek alt alta duran ayrı yazıları birleştiriyordu ("40" + "R5", ölçüldü)
+                //   Kareye yakın tohum (Ø, eğik R) yan yana sayılır, alt alta uzatılmaz.
+                const yatik = tohum.w >= tohum.h * 1.15, dik = !yatik;
+                const satirda = (dik && oY0 >= 0.7 * Math.min(k.h, b.h) && bY === 0) || (yatik && oX0 >= 0.7 * Math.min(k.w, b.w) && bX === 0);
+                const yakin = Math.hypot(bX, bY) <= kb * (satirda ? 1.0 : 0.6);                      // rakam arası boşluk
                 // ince parça ("1" rakamı ya da 4–5 px'lik çizgi kalıntısı) yalnız kümeyle HİZALIYSA alınır: "1" yazıyla
                 //   aynı satırda/sütunda tam örtüşür, yazının altındaki çizgi parçası örtüşmez ("21" 43×63 olmuştu)
                 const oY = Math.min(k.y1, b.y1) - Math.max(k.y0, b.y0), oX = Math.min(k.x1, b.x1) - Math.max(k.x0, b.x0);
@@ -292,7 +319,7 @@ function aiYaziKutusu(gri, W, H, mx, my, R = 90, karakter = 0) {
                 if (ince && !hizali) continue;
                 // (delik çeyreği elemesi KALDIRILDI: eğik ince "1" de kareye yakın ve seyrek (20×17, 0,20) — "0.1"in 1'i
                 //   düşüyordu; delik parçaları zaten tohum olamıyor ve 0,6h mesafe kısıtıyla kümeye girmiyor)
-                if ((benzer && yakin) || (kucuk && Math.hypot(bX, bY) <= kb * 0.5)) { kume.push(b); alindi.add(b); degisti = true; break; }
+                if ((benzer && yakin) || (kucuk && Math.hypot(bX, bY) <= kb * (satirda ? 1.0 : 0.5))) { kume.push(b); alindi.add(b); degisti = true; break; }   // ondalık nokta da geniş aralıklı
             }
         }
     }

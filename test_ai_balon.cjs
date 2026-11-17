@@ -92,6 +92,16 @@ assert(kutu && kutu.x === 300 && kutu.width === 12, 'dikey yazı + çizgi parça
 boya(320, 0, 322, H); kutu = F.aiYaziKutusu(g, W, H, 306, 60);
 assert.deepStrictEqual(kutu, { x: 300, y: 40, width: 12, height: 40 }, 'dikey yazı + dikey çizgi: ' + JSON.stringify(kutu));
 
+// 5c) İNCE YAZI TİPİ + DOLU OK UCU (TEMSA 9802-8260): rakamlar 2 px çizgili (seyrek), yanında içi dolu ok ucu var.
+//   Eskiden ok ucu "rakamsı" tohum olup kutu ona oturuyordu (29 okumanın 26'sı "kutuda yazı yok" diye atıldı).
+{ const W3 = 400, H3 = 300, g3 = new Uint8Array(W3 * H3).fill(255);
+  const b3 = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g3[y * W3 + x] = 0; };
+  const cerceve = (x0, y0, x1, y1) => { b3(x0, y0, x1, y0 + 2); b3(x0, y1 - 2, x1, y1); b3(x0, y0, x0 + 2, y1); b3(x1 - 2, y0, x1, y1); };
+  cerceve(150, 100, 168, 130); cerceve(186, 100, 204, 130);                       // geniş aralıklı ince "00" (18×30)
+  for (let x = 0; x < 34; x++) { const yar = Math.round(x * 7 / 34); b3(110 + x, 150 - yar, 111 + x, 151 + yar); }   // dolu ok ucu (34×15)
+  const k3 = F.aiYaziKutusu(g3, W3, H3, 160, 115);
+  assert(k3 && k3.x === 150 && k3.x + k3.width === 204 && k3.y === 100, 'ince yazı kutusu ok ucuna değil rakamlara oturmalı: ' + JSON.stringify(k3));
+}
 // 6) kablolama + güvenlik
 const iApp = html.search(/<script src="app\.js(\?v=[^"]*)?"><\/script>/), iAi = html.search(/<script src="ai-balloon\.js(\?v=[^"]*)?"><\/script>/);
 assert(html.includes('id="autoBalloonBtn"') && iAi > 0, 'düğme/script yok');
