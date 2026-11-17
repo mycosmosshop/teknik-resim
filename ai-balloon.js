@@ -68,6 +68,22 @@ const aiUyu = ms => new Promise(r => setTimeout(r, ms));
 // Modele sor — TÜM okumalar (kareler, kutu doğrulama, güvenlik ağı) buradan: 429'da sıradaki yedek modele geçilir (günlük kota
 //   MODEL başına), 429/5xx'te sunucunun dediği kadar beklenir. Ölçüldü: kolaj okuması tek modelde iki denemede vazgeçiyordu;
 //   kota dolunca güvenlik ağı sessizce devre dışı kaldı ("40 ±0.1" tamamlanmadı). 400/403 fırlatılır; yanıt yoksa null.
+// Anahtar/izin hatasında Google'ın gerekçesi + ne yapılacağı. Yalnız "403" yazmak kullanıcıyı çaresiz bırakıyordu
+//   (başka kullanıcının anahtarıyla 60 karenin hepsi "403" döndü, sebep görünmedi).
+function aiHataMetni(e) {
+    let m = '';
+    try { const j = JSON.parse(e.body || '{}').error || {}; m = [j.message, ...((j.details || []).map(d => d.reason || ''))].filter(Boolean).join(' · '); } catch (x) { m = String(e.body || '').slice(0, 300); }
+    const ne = /API key not valid|API_KEY_INVALID/i.test(m) ? 'Anahtar geçersiz: eksik/yanlış kopyalanmış olabilir. aistudio.google.com → Get API key ile yeniden kopyalayın.'
+        : /leaked/i.test(m) ? 'Anahtar "sızdırılmış" diye Google tarafından kapatılmış. aistudio.google.com\'dan yeni anahtar alın.'
+        : /REFERRER|referer/i.test(m) ? 'Anahtar başka bir web sitesine kısıtlı. Google Cloud → Kimlik bilgileri → anahtar → Uygulama kısıtlaması: "Yok" ya da mycosmosshop.github.io ekleyin.'
+        : /SERVICE_BLOCKED|API_KEY_SERVICE/i.test(m) ? 'Anahtar başka bir Google API\'sine kısıtlı. Google Cloud → anahtar → API kısıtlaması: "Generative Language API" ekleyin ya da kısıtlamayı kaldırın.'
+        : /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(m) ? 'Anahtarın projesinde Gemini API kapalı. En kolayı: aistudio.google.com → Get API key → Create API key ile yeni anahtar.'
+        : /location is not supported|User location/i.test(m) ? 'Google bu konumdan Gemini API\'ye izin vermiyor (VPN/ağ).'
+        : /not found|is not supported for generateContent/i.test(m) ? 'Model adı bulunamadı: ⚙️ API sayfasında Model alanını boş bırakın.'
+        : e.status === 403 ? 'Google bu anahtara izin vermiyor; aistudio.google.com\'dan alınmış kısıtlamasız bir anahtarla deneyin.' : '';
+    return 'HTTP ' + e.status + (m ? ': ' + m : '') + (ne ? '\n→ ' + ne : '');
+}
+
 async function aiSor(b64, ayar, istem) {
     const modeller = [ayar.model, ...AI_BALON.MODELLER.filter(m => m !== ayar.model)];
     for (let deneme = 0; deneme < AI_BALON.DENEME + modeller.length; deneme++) {
@@ -184,7 +200,9 @@ async function aiKareleriOku(kaynak, W, H, ayar, ilerleme) {
         try { metin = await aiSor(b64, ayar, AI_BALON.ISTEM); son = Date.now(); }
         catch (e) {
             if (e.kota) { hatalar.push('günlük okuma kotası doldu — birkaç saat sonra tekrar deneyin'); break; }
-            hatalar.push('kare ' + (i + 1) + ': ' + (e.status || e.message));      // 400/403: anahtar/model sorunu
+            // anahtar / izin / model hatası her karede aynı: bir kez, gerekçesiyle yazılır, okuma durur
+            if ([400, 401, 403, 404].includes(e.status)) { hatalar.push(aiHataMetni(e)); break; }
+            hatalar.push('kare ' + (i + 1) + ': ' + (e.status || e.message));
         }
         if (metin === null) { if (!hatalar.length || hatalar[hatalar.length - 1].indexOf('kare ' + (i + 1)) < 0) hatalar.push('kare ' + (i + 1) + ': yanıt yok'); continue; }
         const bulunan = aiKareCoz(aiCozumle(metin), k, W, H); ham.push(...bulunan);
@@ -692,7 +710,7 @@ async function autoBalloonAI() {
         const ozet = '✓ ' + eklenen + ' ölçü balonlandı (' + kare + ' kare)' + (kontrolSay ? ' · ' + kontrolSay + ' TURUNCU balon doğrulanamadı — kontrol edin' : '') + (ag.yeni.length ? ' · güvenlik taraması +' + ag.yeni.length + ' ölçü buldu' : '') + (ag.genis ? ' · ' + ag.genis + ' ölçü toleransıyla tamamlandı' : '') + (ag.not ? ' · ' + ag.not + ' not sayısı atlandı' : '') + (hayalet ? ' · ' + hayalet + ' okuma kutu bulunamadığı/doğrulanamadığı için atıldı' : '') + (elenenKalan.length ? ' · ELENEN: ' + elenenKalan.join(', ') + ' — bunları elle balonlayın' : '') + (cakisan ? ' · ' + cakisan + ' zaten balonluydu' : '') + (hatalar.length ? ' · HATA: ' + hatalar.join(', ') : '') + ' — Ölçü tablosundan kontrol edin.';
         aiDurum(ozet, hatalar.length ? 'err' : 'ok'); showNotification(ozet, 'success');
         if (!eklenen && !hatalar.length) alert('Gemini bu çizimde ölçü çizgisine bağlı sayı bulamadı. Manuel balonlama ile devam edebilirsiniz.');
-        if (hatalar.length) alert('Okuma hataları:\n' + hatalar.join('\n') + '\n\n400/403: API anahtarı ya da model adı hatalı (⚙️ API). 429: kota — biraz sonra tekrar deneyin.');
+        if (hatalar.length) alert('Okuma hataları:\n' + hatalar.join('\n') + '\n\n429: kota — biraz sonra tekrar deneyin. Anahtar ⚙️ API sayfasında, yalnız bu tarayıcıda saklanır.');
     } catch (e) {
         console.error(e); aiDurum('Otomatik balonlama hatası: ' + e.message, 'err');
     } finally {

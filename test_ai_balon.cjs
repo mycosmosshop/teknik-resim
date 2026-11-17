@@ -9,7 +9,7 @@ const api = fs.readFileSync(__dirname + '/api-setup.html', 'utf8');
 
 // gövde: tarayıcı globalleri olmadan saf fonksiyonları yükle
 const sandbox = { localStorage: { getItem: () => null }, document: { addEventListener() { } }, fetch: undefined };
-const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiKareler, aiTumKareler, aiAltKareler, aiCerceveDisi, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn, aiMetinGruplari, aiOlcuMetniMi, aiSor};')(sandbox.localStorage, sandbox.document);
+const F = new Function('localStorage', 'document', js + '\nreturn {AI_BALON, aiHataMetni, aiKareler, aiTumKareler, aiAltKareler, aiCerceveDisi, aiDogrulaEslesir, aiKolajYerlesim, aiKareCoz, aiTekille, aiCozumle, aiYaziKutusu, aiBeklemeSn, aiMetinGruplari, aiOlcuMetniMi, aiSor};')(sandbox.localStorage, sandbox.document);
 
 // 0) iki geçiş: 1400 px (6 kare) + 700 px 2× büyütme (24 kare) = 30; ikinci geçiş kareleri olcek 2
 const tk = F.aiTumKareler(3318, 2342);
@@ -101,6 +101,15 @@ assert.deepStrictEqual(kutu, { x: 300, y: 40, width: 12, height: 40 }, 'dikey ya
   for (let x = 0; x < 34; x++) { const yar = Math.round(x * 7 / 34); b3(110 + x, 150 - yar, 111 + x, 151 + yar); }   // dolu ok ucu (34×15)
   const k3 = F.aiYaziKutusu(g3, W3, H3, 160, 115);
   assert(k3 && k3.x === 150 && k3.x + k3.width === 204 && k3.y === 100, 'ince yazı kutusu ok ucuna değil rakamlara oturmalı: ' + JSON.stringify(k3));
+}
+// 5d) anahtar/izin hatası gerekçesiyle gösterilir
+{ const h = (status, body) => F.aiHataMetni({ status, body: JSON.stringify(body) });
+  assert(/Gemini API kapalı/.test(h(403, { error: { message: 'Generative Language API has not been used in project 123 before or it is disabled.', details: [{ reason: 'SERVICE_DISABLED' }] } })), 'API kapalı');
+  assert(/web sitesine kısıtlı/.test(h(403, { error: { message: 'Requests from referer https://mycosmosshop.github.io/ are blocked.', details: [{ reason: 'API_KEY_HTTP_REFERRER_BLOCKED' }] } })), 'site kısıtı');
+  assert(/geçersiz/.test(h(400, { error: { message: 'API key not valid. Please pass a valid API key.' } })), 'geçersiz');
+  assert(/sızdırılmış/.test(h(403, { error: { message: 'Your API key was reported as leaked.' } })), 'sızdı');
+  assert(/HTTP 403/.test(F.aiHataMetni({ status: 403, body: 'düz metin' })), 'JSON olmayan gövde');
+  assert(js.includes('[400, 401, 403, 404].includes(e.status)') && js.includes('hatalar.push(aiHataMetni(e)); break;'), 'tek sefer, okuma durur');
 }
 // 6) kablolama + güvenlik
 const iApp = html.search(/<script src="app\.js(\?v=[^"]*)?"><\/script>/), iAi = html.search(/<script src="ai-balloon\.js(\?v=[^"]*)?"><\/script>/);
